@@ -13,7 +13,8 @@
     "vite": "latest",
     "typescript": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "html5-qrcode": "^2.3.8"
   },
   "devDependencies": {
     "@types/react": "latest",
