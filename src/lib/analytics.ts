@@ -13,7 +13,10 @@ export type AnalyticsEvent =
   | 'continue_previous_selected'
   | 'different_hikone_selected'
   | 'qr_scanner_opened'
-  | 'qr_checkin_success';
+  | 'qr_checkin_success'
+  | 'hikone_ai_opened'
+  | 'hikone_ai_started'
+  | 'hikone_ai_completed';
 
 export function track(event:AnalyticsEvent, data:Record<string,unknown>={}){
   console.info('[analytics]', event, data);
