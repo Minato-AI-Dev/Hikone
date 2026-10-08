@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { DB_V4_META, actions, interestOptions, nodeById, tagNames } from './data/dbV4';
+import { DB_V4_META, actions, nodeById, tagNames } from './data/dbV4';
 import { Answers, HistoryState, Recommendation, ResearchCandidate } from './types';
 import { addValidation, completeExperience, lastCompletedId, loadHistory, startExperience } from './lib/history';
 import { dbStats, knownActionCount, nodeOptions, recommend, researchCandidates, researchNodeCount } from './lib/recommend';
@@ -30,10 +30,10 @@ export default function App(){
  return <div className="app"><header className="top"><button className="brand" onClick={reset}>次の彦根</button><span className="demo">DB V4</span></header><main>
  {screen==='home'&&<section className="hero cardless"><p className="eyebrow">GRAPH RECOMMENDATION DB V4</p><h1>推測しない。<br/>測れた範囲で寄り道を出す。</h1>
  <p>新しい推薦DBを反映しました。地点数を増やすだけでなく、位置・EDGE・最低ACTION時間・公開条件が揃ったものだけを実運用推薦に使います。</p>
- <div className="db-kpis"><div><b>{dbStats.nodeCount}</b><span>登録NODE</span></div><div><b>{dbStats.provisionalUsableEdgeCount}</b><span>暫定可EDGE</span></div><div><b>{knownActionCount}</b><span>最低時間確定ACTION</span></div><div><b>{researchNodeCount}</b><span>調査中NODE</span></div></div>
+ <div className="db-kpis"><div><b>{dbStats.nodeCount}</b><span>登録NODE</span></div><div><b>{dbStats.provisionalUsableEdgeCount}</b><span>推薦に使うEDGE</span></div><div><b>{knownActionCount}</b><span>推薦に使うACTION</span></div><div><b>{researchNodeCount}</b><span>調査中NODE</span></div></div>
  {last&&<p className="muted">前回の記録：{last.type}</p>}
- <button className="primary ai-entry" onClick={beginAI}>Hikone AIに相談する<span>V4のハード制約で成立判定します。</span></button><button className="secondary" onClick={beginQuestions}>条件から試す</button>
- <p className="note">現在は徒歩MVP。EDGEは「暫定可」の6本のみ経路生成に使用し、未取得EDGEは補完しません。</p></section>}
+ <button className="primary" onClick={beginQuestions}>選択肢から探す<span>5回ほどタップするだけで候補を出します。</span></button><button className="secondary ai-entry" onClick={beginAI}>自由入力で相談する<span>細かい希望があるときだけ使えます。</span></button>
+ <p className="note">現在は徒歩MVP。実測値に加え、公式・地図検索で確認できた一部経路と最低滞在時間を「仮運用」として追加しています。仮値は実証後に更新します。</p></section>}
 
  {screen==='ai'&&<HikoneAI answers={answers} history={history} onBack={()=>setScreen('home')} onResolved={(a,r,intro,source)=>{setAnswers(a);setRecs(r);setResearch(researchCandidates(a));setAiIntro(intro);setAiSource(source);setScreen('results')}}/>}
  {screen==='questions'&&<Questionnaire step={step} setStep={setStep} answers={answers} setAnswers={setAnswers} onDone={()=>{track('questionnaire_completed');run(answers)}}/>}
@@ -72,11 +72,21 @@ function Questionnaire({step,setStep,answers,setAnswers,onDone}:{step:number;set
   {q:'今どこにいますか？',body:<Choice value={answers.currentNodeId} setValue={v=>setAnswers({...answers,currentNodeId:String(v)})} options={locs}/>},
   {q:'最後にどこへ行きますか？',body:<Choice value={answers.finalNodeId} setValue={v=>setAnswers({...answers,finalNodeId:String(v)})} options={locs}/>},
   {q:'あと何分ありますか？',body:<Choice value={answers.remainingTimeMin} setValue={v=>setAnswers({...answers,remainingTimeMin:Number(v)})} options={[[20,'20分'],[35,'35分'],[60,'60分'],[90,'90分']]}/>},
-  {q:'今の興味は？（未選択でも可）',body:<Multi values={answers.interestTagIds} setValues={v=>setAnswers({...answers,interestTagIds:v})} options={interestOptions}/>},
+  {q:'今、何がしたい？',body:<InterestChoices values={answers.interestTagIds} setValues={v=>setAnswers({...answers,interestTagIds:v})}/>},
   {q:'寄り道はどこまで許容しますか？',body:<Choice value={answers.detourPreference} setValue={v=>{const x=String(v) as Answers['detourPreference'];setAnswers({...answers,detourPreference:x,discoveryOptIn:x!=='最短'})}} options={[['最短','最短を優先'],['少しなら','少しなら寄り道'],['積極','積極的に発見']]}/>}
  ];
  return <section><div className="progress"><span style={{width:String(((step+1)/qs.length)*100)+'%'}}/></div><p className="eyebrow">{step+1} / {qs.length}</p><h2>{qs[step].q}</h2>{qs[step].body}<div className="actions">{step>0&&<button className="link" onClick={()=>setStep(step-1)}>戻る</button>}<button className="primary" onClick={()=>step===qs.length-1?onDone():setStep(step+1)}>{step===qs.length-1?'V4で判定':'次へ'}</button></div></section>
 }
 function Choice({value,setValue,options}:{value:any;setValue:(v:any)=>void;options:any[][]}){return <div className="choice-grid">{options.map(([v,l])=><button key={String(v)} className={value===v?'choice active':'choice'} onClick={()=>setValue(v)}>{l}</button>)}</div>}
-function Multi({values,setValues,options}:{values:string[];setValues:(v:string[])=>void;options:string[]}){return <div className="choice-grid">{options.map(id=><button key={id} className={values.includes(id)?'choice active':'choice'} onClick={()=>setValues(values.includes(id)?values.filter(x=>x!==id):[...values,id])}>{tagNames[id]||id}</button>)}</div>}
+const interestChoices=[
+ {label:'ひこにゃん',tags:['T_HIKONYAN']},
+ {label:'写真を撮りたい',tags:['T_PHOTO']},
+ {label:'街を歩きたい',tags:['T_WALK','T_STREETSCAPE']},
+ {label:'食べたい',tags:['T_FOOD']},
+ {label:'買い物したい',tags:['T_SHOP']},
+ {label:'歴史を見たい',tags:['T_HISTORY']},
+ {label:'近代建築',tags:['T_MODERN','T_ARCH']},
+ {label:'琵琶湖・景色',tags:['T_LAKE','T_SCENERY','T_NATURE']},
+];
+function InterestChoices({values,setValues}:{values:string[];setValues:(v:string[])=>void}){return <div className="choice-grid">{interestChoices.map(c=>{const active=c.tags.some(t=>values.includes(t));return <button key={c.label} className={active?'choice active':'choice'} onClick={()=>{const next=active?values.filter(v=>!c.tags.includes(v)):[...new Set([...values,...c.tags])];setValues(next)}}>{c.label}</button>})}</div>}
 function ResearchList({items}:{items:ResearchCandidate[]}){if(!items.length)return null;return <div className="research-panel"><p className="eyebrow">DBにはあるが、まだ推薦しない候補</p><h3>調査中候補</h3><p className="muted">V4の方針どおり、不足データを補完せず理由を表示します。</p>{items.map(x=><div className="research-item" key={x.nodeId}><div><b>{x.nodeName}</b>{x.priority&&<span className="pill">PHOTO {x.priority}</span>}</div><small>{x.category} / {x.status}</small>{x.matchingTags.length>0&&<p>一致：{x.matchingTags.join('・')}</p>}<p className="blockers">不足：{x.blockers.join(' / ')}</p></div>)}</div>}
