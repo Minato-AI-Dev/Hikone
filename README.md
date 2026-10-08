@@ -13,6 +13,45 @@
 - 前回の続き / 違う彦根 のランキング切り替え
 - 簡易バリデーション質問とanalytics抽象化
 - 「これまでに見た彦根」履歴画面
+- Hikone AIによる自然文の条件理解と候補の並べ替え
+- AI APIが使えない場合のローカル条件抽出フォールバック
+
+## Hikone AI
+
+Hikone AIは「何でも答える観光チャットボット」ではなく、**今の状況から次にできる彦根を決めるための入口**です。
+
+処理は次の順番です。
+
+1. ユーザーが「あと50分、駅に戻りたい。あまり歩きたくない」のように自然文で入力
+2. サーバー側のAIが時間・帰着先・興味・歩行量・予算・初回/再訪を抽出
+3. 既存の `src/lib/recommend.ts` が時間・予算・歩行量のハード条件で候補を絞り込み
+4. AIは**絞り込み済み候補だけ**をユーザーの言葉に合う順へ並べ替え、理由を短く説明
+5. 以降は既存の「いってらっしゃい → QR → おかえり」へ接続
+
+AIには未登録の場所を推薦させず、営業時間・価格・イベント等の未確認情報を生成させない設計です。
+
+### AI APIの設定
+
+`api/hikone-ai.ts` はサーバー側でOpenAI Responses APIを呼びます。APIキーをフロントエンドへ置かないでください。
+
+```bash
+cp .env.example .env.local
+```
+
+最低限、サーバー側に次を設定します。
+
+```text
+OPENAI_API_KEY=...
+OPENAI_MODEL=gpt-6-luna
+```
+
+フロントとAPIを同一オリジンで配信する場合、`VITE_HIKONE_AI_ENDPOINT` は不要です。GitHub Pagesのような静的ホスティングから別APIを呼ぶ場合は、API URLを設定します。
+
+```text
+VITE_HIKONE_AI_ENDPOINT=https://example.com/api/hikone-ai
+```
+
+API未設定・通信失敗時も、簡易的なローカル条件抽出 + 既存推薦エンジンへ自動的にフォールバックします。
 
 ## 現地QRコードの作り方
 各地点に置くQRコードには、体験データの `id` を使って次の形式を入れます。
@@ -55,8 +94,43 @@ npm run build
 
 ## 構成
 - `src/data/experiences.ts` — 差し替えやすい体験データ
-- `src/lib/recommend.ts` — 推薦ロジック
+- `src/lib/recommend.ts` — ハード条件を守る推薦ロジック
+- `src/lib/hikoneAI.ts` — AI APIクライアント / ローカルフォールバック
+- `src/HikoneAI.tsx` — 自然文相談UI
+- `api/hikone-ai.ts` — APIキーを隠してAIを呼ぶサーバー側エンドポイント
 - `src/lib/history.ts` — localStorage履歴
 - `src/lib/analytics.ts` — analytics抽象化
 - `src/QrScanner.tsx` — 現地QRチェックイン
 - `src/App.tsx` — 画面フロー
+
+
+## Detour-first architecture (v2)
+
+The next implementation branch follows a stricter product principle: the tourist's original destination is preserved. The recommendation unit is **Place + Hook + Micro Experience + Additional Time + Final Destination**.
+
+Core structured data is separated into:
+- `src/data/places.ts`
+- `src/data/hooks.ts`
+- `src/data/microExperiences.ts`
+- `src/data/placeEdges.ts`
+
+`src/lib/route.ts` calculates the original route and the route through a candidate. `src/lib/recommend.ts` rejects infeasible candidates before AI is used and calculates:
+
+```text
+detour_minutes =
+travel(current, resource)
++ experience duration
++ travel(resource, final destination)
+- travel(current, final destination)
+```
+
+The UI exposes the detour as `+N min`, not simply “N minutes away”.
+
+The deterministic engine returns three strategies:
+1. Minimum Detour
+2. Best Match
+3. Explore Hikone
+
+The LLM does **not** calculate travel time, route feasibility, opening-hour truth, coordinates, or existence. It only extracts ambiguous user preferences and rewrites the already-selected recommendations for presentation.
+
+All route and tourism data currently marked `sample` must be replaced with verified values before field deployment.

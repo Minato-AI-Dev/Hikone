@@ -1,22 +1,102 @@
-import { Answers, Experience, HistoryState, Recommendation, WalkingLevel } from '../types';
-import { completedIds, lastCompletedId } from './history';
+import { hooksForPlace } from '../data/hooks';
+import { microExperiences } from '../data/microExperiences';
+import { placeById, placeByName, places } from '../data/places';
+import { Answers, HistoryState, Hook, Recommendation, RecommendationMode, WalkingLevel } from '../types';
+import { completedIds } from './history';
+import { routeMetrics } from './route';
 
-const returnTimes: Record<string, number> = { '彦根駅':12, '彦根城周辺':6, '京橋口駐車場':8, '二の丸駐車場':7, 'その他':12 };
-const outboundByArea: Record<string,number> = { '足軽屋敷周辺':8,'芹橋周辺':12,'玄宮園周辺':6,'夢京橋キャッスルロード':7,'四番町スクエア':8,'彦根城下町':8,'彦根駅〜彦根城':5,'彦根城周辺':5,'城下町中心部':7 };
 const walkRank:Record<WalkingLevel,number>={low:0,medium:1,high:2};
+const clamp=(n:number)=>Math.max(0,Math.min(1,n));
 
-export function recommend(all:Experience[], answers:Answers, history:HistoryState|null, mode:'normal'|'continue'|'different'='normal'):Recommendation[]{
-  const done=completedIds(history); const prev=lastCompletedId(history); const prevExp=all.find(x=>x.id===prev); const buffer=8;
-  return all.filter(e=>e.active && !done.has(e.id)).map(e=>{
-    const travelOut=outboundByArea[e.area] ?? 8; const travelBack=returnTimes[answers.returnTo] ?? 12; const totalMinutes=travelOut+e.durationMinutes+travelBack+buffer;
-    let score=0;
-    if(answers.interests.includes('おまかせ') || e.category.some(c=>answers.interests.includes(c))) score+=4;
-    if(walkRank[e.walkingLevel] <= walkRank[answers.walking]) score+=2; else score-=6;
-    if(answers.firstVisit && e.recommendedForFirstVisit) score+=2;
-    if(!answers.firstVisit && e.recommendedForRepeatVisit) score+=2;
-    if(prev){ if(e.continuationOf?.includes(prev) || e.relatedExperienceIds.includes(prev)) score += mode==='continue'?8:4; if(prevExp && e.theme.some(t=>prevExp.theme.includes(t))) score += mode==='continue'?4:1; }
-    if(mode==='different' && prevExp){ const overlap=e.category.filter(c=>prevExp.category.includes(c)).length; score += overlap===0?5:-overlap*2; }
-    const reason = prev && mode==='continue' && (e.continuationOf?.includes(prev)||e.relatedExperienceIds.includes(prev)) ? `前回の「${prevExp?.name ?? '体験'}」から自然に続けられる候補です。` : mode==='different' && prevExp ? '前回とは違う切り口を優先して選びました。' : `${answers.time}分以内で${answers.returnTo}まで戻れる見込みです。`;
-    return {experience:e,score,totalMinutes,travelOut,travelBack,buffer,reason};
-  }).filter(r=>r.totalMinutes<=answers.time && (answers.budget===null || r.experience.budgetMin<=answers.budget) && walkRank[r.experience.walkingLevel]<=walkRank[answers.walking]).sort((a,b)=>b.score-a.score || a.totalMinutes-b.totalMinutes).slice(0,3);
+function interestOverlap(tags:string[], interests:string[]){
+  if(interests.includes('おまかせ')) return .7;
+  const matches=tags.filter(tag=>interests.includes(tag)).length;
+  return matches ? Math.min(1,.65+matches*.2) : 0;
 }
+
+function chooseHook(placeId:string, interests:string[]):Hook|null{
+  const options=hooksForPlace(placeId);
+  return options.sort((a,b)=>interestOverlap(b.interests,interests)-interestOverlap(a.interests,interests))[0] || null;
+}
+
+function withMode(r:Recommendation, mode:RecommendationMode, reason:string):Recommendation{
+  return {...r,mode,reason};
+}
+
+export function recommend(answers:Answers, history:HistoryState|null):Recommendation[]{
+  const start=placeByName(answers.currentLocation);
+  const end=placeByName(answers.finalDestination);
+  if(!start||!end) return [];
+
+  const original=routeMetrics(start.id,end.id);
+  if(!original) return [];
+
+  const done=completedIds(history);
+  const donePlaceIds=new Set(microExperiences.filter(e=>done.has(e.id)).map(e=>e.placeId));
+  const buffer=5;
+  const candidates:Recommendation[]=[];
+
+  for(const exp of microExperiences){
+    if(!exp.active || exp.staffRequired || exp.reservationRequired || done.has(exp.id)) continue;
+    if(walkRank[exp.walkingLevel] > walkRank[answers.walking]) continue;
+    if(answers.budget!==null && exp.costYen>answers.budget) continue;
+
+    const place=placeById(exp.placeId);
+    if(!place?.active) continue;
+    const hook=chooseHook(place.id,answers.interests);
+    if(!hook) continue;
+
+    const out=routeMetrics(start.id,place.id);
+    const back=routeMetrics(place.id,end.id);
+    if(!out||!back) continue;
+
+    const totalJourneyMinutes=out.minutes+exp.durationMinutes+back.minutes;
+    if(totalJourneyMinutes+buffer>answers.time) continue;
+
+    const detourMinutes=Math.max(0,totalJourneyMinutes-original.minutes);
+    const additionalWalkingMeters=Math.max(0,out.walkingMeters+back.walkingMeters-original.walkingMeters);
+    const interestMatch=Math.max(interestOverlap(hook.interests,answers.interests),interestOverlap(exp.interestTags,answers.interests));
+    const routeFit=clamp(1-detourMinutes/Math.max(answers.time,1));
+    const regionalPriority=clamp(place.regionalPriority/5);
+    const detourEfficiency=clamp(1-detourMinutes/Math.max(30,answers.time));
+    const novelty=donePlaceIds.has(place.id)?.25:1;
+    const score=.30*routeFit+.25*interestMatch+.15*exp.experienceQuality+.15*regionalPriority+.10*detourEfficiency+.05*novelty;
+
+    candidates.push({
+      id:exp.id, mode:'best_match', place, hook, experience:exp, score,
+      originalRouteMinutes:original.minutes, totalJourneyMinutes, detourMinutes, additionalWalkingMeters,
+      travelOut:out.minutes, travelBack:back.minutes, buffer,
+      reason:answers.finalDestination+'へ向かう流れを保ったまま、+'+detourMinutes+'分で入れられる体験です。'
+    });
+  }
+
+  if(!candidates.length) return [];
+
+  const used=new Set<string>();
+  const pick=(sorted:Recommendation[], mode:RecommendationMode, reason:(r:Recommendation)=>string)=>{
+    const found=sorted.find(r=>!used.has(r.id)) || sorted[0];
+    if(!found) return null;
+    used.add(found.id);
+    return withMode(found,mode,reason(found));
+  };
+
+  const minimum=pick(
+    [...candidates].sort((a,b)=>a.detourMinutes-b.detourMinutes || b.score-a.score),
+    'minimum_detour',
+    r=>'予定を最も崩しにくい候補です。元の移動に+'+r.detourMinutes+'分だけ足します。'
+  );
+  const best=pick(
+    [...candidates].sort((a,b)=>b.score-a.score || a.detourMinutes-b.detourMinutes),
+    'best_match',
+    r=>'興味・体験・寄り道量のバランスが最も高い候補です。追加は+'+r.detourMinutes+'分です。'
+  );
+  const explore=pick(
+    [...candidates].sort((a,b)=>b.place.regionalPriority-a.place.regionalPriority || b.score-a.score || a.detourMinutes-b.detourMinutes),
+    'explore_hikone',
+    r=>'少しだけ足を伸ばし、普段の導線から外れた彦根へつなぐ候補です。追加は+'+r.detourMinutes+'分です。'
+  );
+
+  return [minimum,best,explore].filter((x):x is Recommendation=>Boolean(x));
+}
+
+export const recommendationPlaces=places;
