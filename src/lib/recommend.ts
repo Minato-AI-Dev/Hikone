@@ -1,102 +1,147 @@
-import { hooksForPlace } from '../data/hooks';
-import { microExperiences } from '../data/microExperiences';
-import { placeById, placeByName, places } from '../data/places';
-import { Answers, HistoryState, Hook, Recommendation, RecommendationMode, WalkingLevel } from '../types';
+import { Answers, HistoryState, Recommendation, ResearchCandidate } from '../types';
+import { actions, actionsForNode, DB_V4_META, edges, locationStatus, nodeById, nodes, nodeTags, photoPriority, tagNames } from '../data/dbV4';
 import { completedIds } from './history';
-import { routeMetrics } from './route';
 
-const walkRank:Record<WalkingLevel,number>={low:0,medium:1,high:2};
-const clamp=(n:number)=>Math.max(0,Math.min(1,n));
+type Route={minutes:number;distance:number|null};
 
-function interestOverlap(tags:string[], interests:string[]){
-  if(interests.includes('おまかせ')) return .7;
-  const matches=tags.filter(tag=>interests.includes(tag)).length;
-  return matches ? Math.min(1,.65+matches*.2) : 0;
+function usableEdges(mode:string){
+  return edges.filter(e=>e.mode===mode && e.policy==='暫定可' && typeof e.time==='number');
 }
-
-function chooseHook(placeId:string, interests:string[]):Hook|null{
-  const options=hooksForPlace(placeId);
-  return options.sort((a,b)=>interestOverlap(b.interests,interests)-interestOverlap(a.interests,interests))[0] || null;
+function shortest(from:string,to:string,mode:string):Route|null{
+  if(from===to) return {minutes:0,distance:0};
+  const es=usableEdges(mode);
+  const adj=new Map<string,Array<{to:string;minutes:number;distance:number|null}>>();
+  const add=(a:string,b:string,m:number,d:number|null)=>{
+    const list=adj.get(a)||[];list.push({to:b,minutes:m,distance:d});adj.set(a,list);
+  };
+  for(const e of es){
+    add(e.from,e.to,e.time as number,e.distance);
+    if(e.direction==='both') add(e.to,e.from,e.time as number,e.distance);
+  }
+  const best=new Map<string,Route>();
+  const q:Array<{id:string;minutes:number;distance:number|null}>=[{id:from,minutes:0,distance:0}];
+  best.set(from,{minutes:0,distance:0});
+  while(q.length){
+    q.sort((a,b)=>a.minutes-b.minutes);
+    const cur=q.shift()!;
+    if(cur.id===to) return {minutes:cur.minutes,distance:cur.distance};
+    const known=best.get(cur.id); if(known && cur.minutes>known.minutes) continue;
+    for(const n of adj.get(cur.id)||[]){
+      const distance=cur.distance===null||n.distance===null?null:cur.distance+n.distance;
+      const cand={minutes:cur.minutes+n.minutes,distance};
+      const prev=best.get(n.to);
+      if(!prev||cand.minutes<prev.minutes){best.set(n.to,cand);q.push({id:n.to,...cand});}
+    }
+  }
+  return null;
 }
-
-function withMode(r:Recommendation, mode:RecommendationMode, reason:string):Recommendation{
-  return {...r,mode,reason};
+function matchingTags(nodeId:string,selected:string[]){
+  const tags=nodeTags[nodeId]||[];
+  return selected.filter(t=>tags.includes(t));
 }
-
-export function recommend(answers:Answers, history:HistoryState|null):Recommendation[]{
-  const start=placeByName(answers.currentLocation);
-  const end=placeByName(answers.finalDestination);
-  if(!start||!end) return [];
-
-  const original=routeMetrics(start.id,end.id);
+function actionSupportsExplicitTheme(actionName:string,selected:string[]){
+  if(!selected.length) return true;
+  const checks:Record<string,RegExp>={
+    T_PHOTO:/写真|撮影/,
+    T_FOOD:/食べ|飲食|購入|カステラ|メニュー/,
+    T_SHOP:/店|土産|ショップ|グッズ|購入/,
+    T_HIKONYAN:/ひこにゃん|キャラ|マンホール|グッズ|赤備え/,
+  };
+  const strict=selected.filter(t=>checks[t]);
+  if(!strict.length) return true;
+  return strict.some(t=>checks[t].test(actionName));
+}
+function layerFor(nodeId:string,answers:Answers):'L1'|'L2'{
+  return matchingTags(nodeId,answers.interestTagIds).length?'L1':'L2';
+}
+export function recommend(answers:Answers,history:HistoryState|null):Recommendation[]{
+  const original=shortest(answers.currentNodeId,answers.finalNodeId,answers.availableMode);
   if(!original) return [];
-
   const done=completedIds(history);
-  const donePlaceIds=new Set(microExperiences.filter(e=>done.has(e.id)).map(e=>e.placeId));
-  const buffer=5;
-  const candidates:Recommendation[]=[];
+  const out:Recommendation[]=[];
+  for(const node of nodes){
+    if(node.type!=='poi'&&node.type!=='area') continue;
+    if(node.id===answers.currentNodeId||node.id===answers.finalNodeId) continue;
+    if(node.status!=='ACTIVE') continue;
+    if(!node.modes.includes(answers.availableMode)) continue;
+    if(!node.publicStatus.includes('公開')) continue;
+    const knownAction=actionsForNode(node.id).find(a=>typeof a.minStay==='number'&&a.timeStatus==='KNOWN');
+    if(!knownAction||done.has(knownAction.id)) continue;
+    const layer=layerFor(node.id,answers);
+    if(layer==='L2'&&(!answers.discoveryOptIn||answers.detourPreference==='最短')) continue;
+    if(layer==='L1'&&!actionSupportsExplicitTheme(knownAction.type,answers.interestTagIds)) continue;
 
-  for(const exp of microExperiences){
-    if(!exp.active || exp.staffRequired || exp.reservationRequired || done.has(exp.id)) continue;
-    if(walkRank[exp.walkingLevel] > walkRank[answers.walking]) continue;
-    if(answers.budget!==null && exp.costYen>answers.budget) continue;
-
-    const place=placeById(exp.placeId);
-    if(!place?.active) continue;
-    const hook=chooseHook(place.id,answers.interests);
-    if(!hook) continue;
-
-    const out=routeMetrics(start.id,place.id);
-    const back=routeMetrics(place.id,end.id);
-    if(!out||!back) continue;
-
-    const totalJourneyMinutes=out.minutes+exp.durationMinutes+back.minutes;
-    if(totalJourneyMinutes+buffer>answers.time) continue;
-
-    const detourMinutes=Math.max(0,totalJourneyMinutes-original.minutes);
-    const additionalWalkingMeters=Math.max(0,out.walkingMeters+back.walkingMeters-original.walkingMeters);
-    const interestMatch=Math.max(interestOverlap(hook.interests,answers.interests),interestOverlap(exp.interestTags,answers.interests));
-    const routeFit=clamp(1-detourMinutes/Math.max(answers.time,1));
-    const regionalPriority=clamp(place.regionalPriority/5);
-    const detourEfficiency=clamp(1-detourMinutes/Math.max(30,answers.time));
-    const novelty=donePlaceIds.has(place.id)?.25:1;
-    const score=.30*routeFit+.25*interestMatch+.15*exp.experienceQuality+.15*regionalPriority+.10*detourEfficiency+.05*novelty;
-
-    candidates.push({
-      id:exp.id, mode:'best_match', place, hook, experience:exp, score,
-      originalRouteMinutes:original.minutes, totalJourneyMinutes, detourMinutes, additionalWalkingMeters,
-      travelOut:out.minutes, travelBack:back.minutes, buffer,
-      reason:answers.finalDestination+'へ向かう流れを保ったまま、+'+detourMinutes+'分で入れられる体験です。'
+    const toNode=shortest(answers.currentNodeId,node.id,answers.availableMode);
+    const toFinal=shortest(node.id,answers.finalNodeId,answers.availableMode);
+    if(!toNode||!toFinal) continue;
+    const via=toNode.minutes+(knownAction.minStay as number)+toFinal.minutes;
+    if(via>answers.remainingTimeMin) continue;
+    const viaDistance=toNode.distance===null||toFinal.distance===null?null:toNode.distance+toFinal.distance;
+    const additionalDistance=original.distance===null||viaDistance===null?null:Math.max(0,viaDistance-original.distance);
+    const matches=matchingTags(node.id,answers.interestTagIds);
+    out.push({
+      id:node.id+'-'+knownAction.id,nodeId:node.id,nodeName:node.name,actionId:knownAction.id,actionName:knownAction.type,layer,
+      originalRouteMinutes:original.minutes,viaRouteMinutes:via,detourMinutes:Math.max(0,via-original.minutes),
+      originalDistanceM:original.distance,viaDistanceM:viaDistance,additionalDistanceM:additionalDistance,
+      matchingTags:matches.map(t=>tagNames[t]||t),
+      reason:layer==='L1'
+        ?'選んだテーマに合い、現在のV4データで時間成立を判定できる候補です。'
+        :'明示テーマを置き換えず、発見枠として追加できる候補です。',
+      dataStatus:'EDGEは地図値ベースの「暫定可」。最低ACTION時間はKNOWNのみ使用'
     });
   }
-
-  if(!candidates.length) return [];
-
-  const used=new Set<string>();
-  const pick=(sorted:Recommendation[], mode:RecommendationMode, reason:(r:Recommendation)=>string)=>{
-    const found=sorted.find(r=>!used.has(r.id)) || sorted[0];
-    if(!found) return null;
-    used.add(found.id);
-    return withMode(found,mode,reason(found));
-  };
-
-  const minimum=pick(
-    [...candidates].sort((a,b)=>a.detourMinutes-b.detourMinutes || b.score-a.score),
-    'minimum_detour',
-    r=>'予定を最も崩しにくい候補です。元の移動に+'+r.detourMinutes+'分だけ足します。'
-  );
-  const best=pick(
-    [...candidates].sort((a,b)=>b.score-a.score || a.detourMinutes-b.detourMinutes),
-    'best_match',
-    r=>'興味・体験・寄り道量のバランスが最も高い候補です。追加は+'+r.detourMinutes+'分です。'
-  );
-  const explore=pick(
-    [...candidates].sort((a,b)=>b.place.regionalPriority-a.place.regionalPriority || b.score-a.score || a.detourMinutes-b.detourMinutes),
-    'explore_hikone',
-    r=>'少しだけ足を伸ばし、普段の導線から外れた彦根へつなぐ候補です。追加は+'+r.detourMinutes+'分です。'
-  );
-
-  return [minimum,best,explore].filter((x):x is Recommendation=>Boolean(x));
+  out.sort((a,b)=>{
+    if(a.layer!==b.layer) return a.layer==='L1'?-1:1;
+    if(answers.detourPreference==='積極') return b.matchingTags.length-a.matchingTags.length || a.detourMinutes-b.detourMinutes;
+    return a.detourMinutes-b.detourMinutes || b.matchingTags.length-a.matchingTags.length;
+  });
+  return out.slice(0,3);
 }
 
-export const recommendationPlaces=places;
+function candidateBlockers(nodeId:string,answers:Answers){
+  const node=nodeById(nodeId); if(!node) return ['NODE不明'];
+  const blockers:string[]=[];
+  if(node.status!=='ACTIVE') blockers.push('MVP状態: '+node.status);
+  if(!node.modes.includes(answers.availableMode)) blockers.push('徒歩モード未確定');
+  const known=actionsForNode(nodeId).some(a=>typeof a.minStay==='number'&&a.timeStatus==='KNOWN');
+  if(!known) blockers.push('最低ACTION時間が未実測');
+  const a=shortest(answers.currentNodeId,nodeId,answers.availableMode);
+  const b=shortest(nodeId,answers.finalNodeId,answers.availableMode);
+  if(!a||!b) blockers.push('使用可能EDGEが不足');
+  if(locationStatus[nodeId]) blockers.push(locationStatus[nodeId]);
+  if(!node.publicStatus.includes('公開')&& !node.publicStatus.includes('屋外公開')) blockers.push(node.publicStatus);
+  return [...new Set(blockers)];
+}
+
+export function researchCandidates(answers:Answers):ResearchCandidate[]{
+  const selected=answers.interestTagIds;
+  let pool=nodes.filter(n=>(n.type==='poi'||n.type==='area')&&n.id!==answers.currentNodeId&&n.id!==answers.finalNodeId);
+  if(selected.length) pool=pool.filter(n=>matchingTags(n.id,selected).length);
+  else pool=pool.filter(n=>n.status!=='ACTIVE');
+
+  const ranked=pool.map(node=>{
+    const tags=matchingTags(node.id,selected);
+    let themeRank=0;
+    const nts=nodeTags[node.id]||[];
+    if(selected.includes('T_HIKONYAN')){
+      if(nts.includes('T_HIK_DIRECT')) themeRank=30;
+      else if(nts.includes('T_CHAR_HISTORY')) themeRank=20;
+      else if(nts.includes('T_HIK_ORIGIN')) themeRank=10;
+    }
+    const pp=photoPriority[node.id];
+    if(selected.includes('T_PHOTO')&&pp==='A') themeRank+=30;
+    if(selected.includes('T_PHOTO')&&pp==='B') themeRank+=20;
+    return {node,tags,themeRank,priority:pp};
+  }).filter(x=>candidateBlockers(x.node.id,answers).length>0);
+
+  ranked.sort((a,b)=>b.themeRank-a.themeRank || b.tags.length-a.tags.length || (a.node.status==='RESEARCH'?-1:1));
+  return ranked.slice(0,6).map(x=>({
+    nodeId:x.node.id,nodeName:x.node.name,status:x.node.status,category:x.node.category,
+    matchingTags:x.tags.map(t=>tagNames[t]||t),priority:x.priority,blockers:candidateBlockers(x.node.id,answers),note:x.node.note
+  }));
+}
+
+export const dbStats=DB_V4_META;
+export const nodeOptions=nodes.filter(n=>['S01','D01','P01','P02'].includes(n.id));
+export const researchNodeCount=nodes.filter(n=>n.status==='RESEARCH'||n.status==='BACKLOG'||n.status==='CONDITIONAL').length;
+export const knownActionCount=actions.filter(a=>typeof a.minStay==='number'&&a.timeStatus==='KNOWN').length;
