@@ -102,3 +102,35 @@ npm run build
 - `src/lib/analytics.ts` — analytics抽象化
 - `src/QrScanner.tsx` — 現地QRチェックイン
 - `src/App.tsx` — 画面フロー
+
+
+## Detour-first architecture (v2)
+
+The next implementation branch follows a stricter product principle: the tourist's original destination is preserved. The recommendation unit is **Place + Hook + Micro Experience + Additional Time + Final Destination**.
+
+Core structured data is separated into:
+- `src/data/places.ts`
+- `src/data/hooks.ts`
+- `src/data/microExperiences.ts`
+- `src/data/placeEdges.ts`
+
+`src/lib/route.ts` calculates the original route and the route through a candidate. `src/lib/recommend.ts` rejects infeasible candidates before AI is used and calculates:
+
+```text
+detour_minutes =
+travel(current, resource)
++ experience duration
++ travel(resource, final destination)
+- travel(current, final destination)
+```
+
+The UI exposes the detour as `+N min`, not simply “N minutes away”.
+
+The deterministic engine returns three strategies:
+1. Minimum Detour
+2. Best Match
+3. Explore Hikone
+
+The LLM does **not** calculate travel time, route feasibility, opening-hour truth, coordinates, or existence. It only extracts ambiguous user preferences and rewrites the already-selected recommendations for presentation.
+
+All route and tourism data currently marked `sample` must be replaced with verified values before field deployment.
