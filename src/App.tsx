@@ -4,10 +4,9 @@ import { Answers, HistoryState, Recommendation, ResearchCandidate } from './type
 import { addValidation, completeExperience, lastCompletedId, loadHistory, startExperience } from './lib/history';
 import { dbStats, knownActionCount, nodeOptions, recommend, researchCandidates, researchNodeCount } from './lib/recommend';
 import { track } from './lib/analytics';
-import QrScanner from './QrScanner';
 import HikoneAI from './HikoneAI';
 
-type Screen='home'|'ai'|'questions'|'results'|'detail'|'go'|'scan'|'return'|'done'|'history';
+type Screen='home'|'ai'|'questions'|'results'|'detail'|'go'|'done'|'history';
 const defaultAnswers:Answers={currentNodeId:'S01',finalNodeId:'D01',remainingTimeMin:35,interestTagIds:[],availableMode:'徒歩',maxWalkMin:null,detourPreference:'少しなら',discoveryOptIn:true,firstVisit:true};
 const debugMode=new URLSearchParams(window.location.search).get('debug')==='1';
 
@@ -43,7 +42,6 @@ export default function App(){
  const selectRec=(r:Recommendation)=>{setSelected(r);setScreen('detail');track('recommendation_selected',{id:r.id,detourMinutes:r.detourMinutes})};
  const beginExperience=()=>{if(!selected)return;const h=startExperience({experienceId:selected.actionId,startedAt:new Date().toISOString(),completed:false},answers);setHistory(h);setScreen('go');track('experience_started',{id:selected.actionId,detourMinutes:selected.detourMinutes})};
  const markCompleted=(ok:boolean)=>{if(!selected)return;if(ok){const h=completeExperience(selected.actionId);setHistory(h);setScreen('done');track('experience_completed',{id:selected.actionId,method:'manual'})}else{setScreen('home');track('experience_not_completed',{id:selected.actionId})}};
- const qrComplete=()=>{if(!selected)return;const h=completeExperience(selected.actionId);setHistory(h);setScreen('done');track('qr_checkin_success',{id:selected.actionId});track('experience_completed',{id:selected.actionId,method:'qr'})};
  const reset=()=>{setSelected(null);setRecs([]);setResearch([]);setAiIntro(null);setScreen('home')};
 
  return <div className="app">
@@ -94,6 +92,7 @@ export default function App(){
     <h2>{friendlyNodeName(selected.nodeName)}</h2>
     <p>{friendlyReason(selected)}</p>
     <div className="mission"><small>ここですること</small><br/><b>{friendlyAction(selected.actionName)}</b></div>
+    <MapEmbed placeName={selected.nodeName}/>
     <div className="breakdown">
       <div><b>{shortName(finalName)}へ直行</b><span>約{selected.originalRouteMinutes}分</span></div>
       <div><b>この寄り道をする</b><span>約{selected.viaRouteMinutes}分</span></div>
@@ -111,17 +110,11 @@ export default function App(){
     <h1>いってらっしゃい。</h1>
     <p>「{friendlyNodeName(selected.nodeName)}」で、<br/><b>{friendlyAction(selected.actionName)}</b></p>
     <div className="time-big">+{selected.detourMinutes}分</div>
-    <div className="checkpoint-box"><b>着いたら</b><p>QRコードがあれば読み取ってください。寄り道した記録が残ります。</p></div>
-    <button className="primary" onClick={()=>{setScreen('scan');track('qr_scanner_opened',{id:selected.actionId})}}>現地QRを読み取る</button>
-    <button className="link" onClick={()=>setScreen('return')}>QRがない場合</button>
-   </section>}
-
-   {screen==='scan'&&selected&&<QrScanner experienceId={selected.actionId} experienceName={friendlyAction(selected.actionName)} onVerified={qrComplete} onCancel={()=>setScreen('go')}/>}
-
-   {screen==='return'&&selected&&<section className="center">
-    <h2>寄り道できましたか？</h2><p>{friendlyNodeName(selected.nodeName)}</p>
+    <MapEmbed placeName={selected.nodeName}/>
+    <a className="secondary anchor map-open" href={googleMapsOpenUrl(selected.nodeName)} target="_blank" rel="noreferrer" onClick={()=>track('navigation_clicked',{id:selected.actionId})}>Google Mapsで開く</a>
+    <div className="checkpoint-box"><b>寄り道できたら</b><p>戻って「行ってきた」を押してください。寄り道の記録が残ります。</p></div>
     <button className="primary" onClick={()=>markCompleted(true)}>行ってきた</button>
-    <button className="secondary" onClick={()=>markCompleted(false)}>今回は行かなかった</button>
+    <button className="link" onClick={()=>markCompleted(false)}>今回は行かなかった</button>
    </section>}
 
    {screen==='done'&&selected&&<section className="center">
@@ -175,6 +168,31 @@ const interestChoices=[
 ];
 
 function InterestChoices({values,setValues}:{values:string[];setValues:(v:string[])=>void}){return <div className="choice-grid">{interestChoices.map(c=>{const active=c.tags.some(t=>values.includes(t));return <button key={c.label} className={active?'choice active':'choice'} onClick={()=>{const next=active?values.filter(v=>!c.tags.includes(v)):[...new Set([...values,...c.tags])];setValues(next)}}>{c.label}</button>})}</div>}
+
+function googleMapsQuery(placeName:string){
+ return friendlyNodeName(placeName)+' 彦根市 滋賀県';
+}
+
+function googleMapsEmbedUrl(placeName:string){
+ return 'https://www.google.com/maps?q='+encodeURIComponent(googleMapsQuery(placeName))+'&output=embed';
+}
+
+function googleMapsOpenUrl(placeName:string){
+ return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(googleMapsQuery(placeName));
+}
+
+function MapEmbed({placeName}:{placeName:string}){
+ return <div className="map-card">
+  <iframe
+   title={friendlyNodeName(placeName)+'の地図'}
+   src={googleMapsEmbedUrl(placeName)}
+   loading="lazy"
+   referrerPolicy="no-referrer-when-downgrade"
+   allowFullScreen
+  />
+  <small>Google Mapsで場所を確認できます。</small>
+ </div>;
+}
 
 function friendlyAction(action:string){
  return action
