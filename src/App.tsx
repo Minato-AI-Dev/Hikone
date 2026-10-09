@@ -99,7 +99,7 @@ export default function App(){
    {screen==='results'&&<section>
     <p className="eyebrow">今から行けるところ</p>
     <h2>{recs.length?'このあたりがおすすめです':'今の条件では、寄り道なしが安心です'}</h2>
-    {aiIntro&&<div className="ai-summary"><span className="pill">{aiSource==='ai'?'Hikone AI':'自動判定'}</span><p>{aiIntro}</p></div>}
+    {aiIntro&&<div className="ai-summary"><span className="pill">寄り道のご提案</span><p>{aiIntro}</p></div>}
     {gps&&<p className="gps-notice">Google Mapsの出発点には取得した現在地を使います。下の所要時間は選択した出発地点（{shortName(currentName)}）を基準とした参考値です。</p>}
     <div className="route-context"><b>{shortName(currentName)}</b><span>→</span><b>{shortName(finalName)}</b><small>残り {answers.remainingTimeMin}分</small></div>
     {answers.interestTagIds.length>0&&<div className="selected-tags">{friendlySelectedTags(answers.interestTagIds).map(t=><span key={t}>{t}</span>)}</div>}
