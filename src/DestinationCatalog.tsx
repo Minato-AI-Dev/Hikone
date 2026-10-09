@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { nodes, nodeTags, tagNames, actionsForNode } from './data/dbV4';
+import { nodes, nodeTags, tagNames } from './data/dbV4';
+import { visitorStory } from './data/visitorStories';
 
 type CatalogPlace = (typeof nodes)[number];
 const interestFilters = [
@@ -55,7 +56,7 @@ export default function DestinationCatalog({onBack}:{onBack:()=>void}){
    <div className="catalog-grid">{list.map(p=><article className="catalog-item" key={p.id}>
      <div className="catalog-item-head"><h3>{canonical(p)}</h3>{cautious(p)&&<span className="catalog-unverified">詳細確認中</span>}</div>
      <p className="catalog-category">{p.category}</p>
-     <p className="catalog-desc">{p.note || actionsForNode(p.id)[0]?.type || '彦根の立ち寄り候補です。'}</p>
+     <p className="catalog-desc">{visitorStory(p.id,p.category).text}</p>
      <div className="catalog-tags">{(nodeTags[p.id]||[]).slice(0,3).map(t=><span key={t}>{tagNames[t]||t}</span>)}</div>
      <a className="catalog-map-link" href={maps(p)} target="_blank" rel="noopener noreferrer">Google Mapsで場所を見る ↗</a>
    </article>)}</div>

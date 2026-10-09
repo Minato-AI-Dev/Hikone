@@ -6,6 +6,7 @@ import { dbStats, knownActionCount, nodeOptions, recommend, researchCandidates, 
 import { track } from './lib/analytics';
 import HikoneAI from './HikoneAI';
 import DestinationCatalog from './DestinationCatalog';
+import { visitorStory } from './data/visitorStories';
 
 type Screen='home'|'ai'|'questions'|'results'|'detail'|'go'|'done'|'history'|'catalog';
 const defaultAnswers:Answers={currentNodeId:'S01',finalNodeId:'D01',remainingTimeMin:35,interestTagIds:[],availableMode:'徒歩',maxWalkMin:null,detourPreference:'少しなら',discoveryOptIn:true,firstVisit:true};
@@ -239,8 +240,7 @@ function friendlyNodeName(name:string){
 function shortName(name:string){return friendlyNodeName(name)}
 
 function friendlyReason(r:Recommendation){
- if(r.matchingTags.length) return `${r.matchingTags.join('・')}が気になるなら、今の予定に+${r.detourMinutes}分で入れられます。`;
- return `帰る方向を大きく変えず、+${r.detourMinutes}分で少し違う彦根を見られます。`;
+ return visitorStory(r.nodeId,nodeById(r.nodeId)?.category||'').text;
 }
 
 function friendlySelectedTags(ids:string[]){
