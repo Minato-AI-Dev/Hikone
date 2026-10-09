@@ -12,12 +12,12 @@ async function postJson<T>(body:unknown):Promise<T>{
 }
 export async function understandWithHikoneAI(message:string):Promise<AIUnderstandResult>{
  try{const result=await postJson<{answers:Partial<Answers>;message:string}>({mode:'extract-v4',message});return {...result,source:'ai'}}
- catch{return {answers:inferLocally(message),message:'V4の入力項目として読み取れる範囲を反映しました。',source:'fallback'}}
+ catch{return {answers:inferLocally(message),message:'ご希望をもとに探しました。',source:'fallback'}}
 }
 export async function presentWithHikoneAI(message:string,answers:Answers,recommendations:Recommendation[]):Promise<AIPresentationResult>{
  const candidates=recommendations.map(r=>({id:r.id,node:r.nodeName,action:r.actionName,layer:r.layer,detourMinutes:r.detourMinutes,matchingTags:r.matchingTags}));
  try{const result=await postJson<{intro:string;reasons:Record<string,string>}>({mode:'present-v4',message,answers,candidates});return {...result,source:'ai'}}
- catch{return {intro:'V4のハード制約で成立した候補だけを表示しています。',reasons:Object.fromEntries(recommendations.map(r=>[r.id,r.reason])),source:'fallback'}}
+ catch{return {intro:'',reasons:Object.fromEntries(recommendations.map(r=>[r.id,r.reason])),source:'fallback'}}
 }
 export function applyAIPresentation(recommendations:Recommendation[],p:AIPresentationResult){return recommendations.map(r=>({...r,reason:p.reasons[r.id]||r.reason}))}
 
