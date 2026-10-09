@@ -11,6 +11,17 @@ import { visitorStory } from './data/visitorStories';
 type Screen='home'|'ai'|'questions'|'results'|'detail'|'go'|'done'|'history'|'catalog';
 const defaultAnswers:Answers={currentNodeId:'S01',finalNodeId:'D01',remainingTimeMin:35,interestTagIds:[],availableMode:'徒歩',maxWalkMin:null,detourPreference:'少しなら',discoveryOptIn:true,firstVisit:true};
 const debugMode=new URLSearchParams(window.location.search).get('debug')==='1';
+type GPSPosition={lat:number;lng:number;accuracy:number};
+function getGps():Promise<GPSPosition>{
+ return new Promise((resolve,reject)=>{
+  if(!navigator.geolocation){reject(new Error('このブラウザは位置情報に対応していません。'));return;}
+  navigator.geolocation.getCurrentPosition(
+   p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy}),
+   e=>reject(new Error(e.code===1?'位置情報の許可がありません。ブラウザの設定を確認してください。':e.code===3?'位置情報の取得がタイムアウトしました。':'現在地を取得できませんでした。')),
+   {enableHighAccuracy:true,timeout:12000,maximumAge:60000}
+  );
+ });
+}
 
 export default function App(){
  const [history,setHistory]=useState<HistoryState|null>(()=>loadHistory());
@@ -24,6 +35,19 @@ export default function App(){
  const [counter,setCounter]=useState<'no'|'probablyNo'|'yes'>('probablyNo');
  const [aiIntro,setAiIntro]=useState<string|null>(null);
  const [aiSource,setAiSource]=useState<'ai'|'fallback'|null>(null);
+ const [gps,setGps]=useState<GPSPosition|null>(null);
+ const [gpsBusy,setGpsBusy]=useState(false);
+ const [gpsError,setGpsError]=useState('');
+ const requestGps=async()=>{
+  setGpsBusy(true);setGpsError('');
+  try{
+   const p=await getGps();
+   setGps(p);
+   // GPS is deliberately not mapped to a DB node: node-level travel times
+   // cannot be inferred from device coordinates without a routing service.
+  }catch(e){setGpsError(e instanceof Error?e.message:'現在地を取得できませんでした。');}
+  finally{setGpsBusy(false);}
+ };
 
  useEffect(()=>{track('app_open');if(history)track('returning_user_detected')},[]);
  const last=useMemo(()=>actions.find(a=>a.id===lastCompletedId(history)),[history]);
@@ -70,12 +94,13 @@ export default function App(){
      setAnswers(a);setRecs(r);setResearch(debugMode?researchCandidates(a):[]);setAiIntro(intro);setAiSource(source);setScreen('results');
    }}/>}
 
-   {screen==='questions'&&<Questionnaire step={step} setStep={setStep} answers={answers} setAnswers={setAnswers} onDone={()=>{track('questionnaire_completed');run(answers)}}/>}
+   {screen==='questions'&&<Questionnaire step={step} setStep={setStep} answers={answers} setAnswers={setAnswers} gps={gps} gpsBusy={gpsBusy} gpsError={gpsError} requestGps={requestGps} onDone={()=>{track('questionnaire_completed');run(answers)}}/>}
 
    {screen==='results'&&<section>
     <p className="eyebrow">今から行けるところ</p>
     <h2>{recs.length?'このあたりがおすすめです':'今の条件では、寄り道なしが安心です'}</h2>
     {aiIntro&&<div className="ai-summary"><span className="pill">{aiSource==='ai'?'Hikone AI':'自動判定'}</span><p>{aiIntro}</p></div>}
+    {gps&&<p className="gps-notice">Google Mapsの出発点には取得した現在地を使います。下の所要時間は選択した出発地点（{shortName(currentName)}）を基準とした参考値です。</p>}
     <div className="route-context"><b>{shortName(currentName)}</b><span>→</span><b>{shortName(finalName)}</b><small>残り {answers.remainingTimeMin}分</small></div>
     {answers.interestTagIds.length>0&&<div className="selected-tags">{friendlySelectedTags(answers.interestTagIds).map(t=><span key={t}>{t}</span>)}</div>}
     {!recs.length&&<div className="strict-empty"><b>今回は無理に寄り道をおすすめしません。</b><p>残り時間を増やすか、興味を変えると候補が出ることがあります。</p></div>}
@@ -89,7 +114,7 @@ export default function App(){
         <p className="reason">{friendlyReason(r)}</p>
         <small>{shortName(finalName)}まで含めて 約{r.viaRouteMinutes}分{r.additionalDistanceM!==null?' / 追加約'+r.additionalDistanceM+'m':''}</small>
       </button>
-      <a className="result-map-link" href={googleMapsDirectionsUrl(currentName,r.nodeName,finalName)} target="_blank" rel="noopener noreferrer" onClick={()=>track('navigation_clicked',{id:r.actionId,from:'results'})}>
+      <a className="result-map-link" href={googleMapsDirectionsUrl(gps?gps.lat+','+gps.lng:currentName,r.nodeName,finalName)} target="_blank" rel="noopener noreferrer" onClick={()=>track('navigation_clicked',{id:r.actionId,from:'results'})}>
         Google Mapsで経路を見る ↗
       </a>
     </div>)}</div>
@@ -105,7 +130,7 @@ export default function App(){
     <p>{friendlyReason(selected)}</p>
     <div className="mission"><small>ここですること</small><br/><b>{friendlyAction(selected.actionName)}</b></div>
     <MapEmbed placeName={selected.nodeName}/>
-    <a className="result-map-link detail-map-link" href={googleMapsDirectionsUrl(currentName,selected.nodeName,finalName)} target="_blank" rel="noopener noreferrer" onClick={()=>track('navigation_clicked',{id:selected.actionId,from:'detail'})}>Google Mapsで経路を見る ↗</a>
+    <a className="result-map-link detail-map-link" href={googleMapsDirectionsUrl(gps?gps.lat+','+gps.lng:currentName,selected.nodeName,finalName)} target="_blank" rel="noopener noreferrer" onClick={()=>track('navigation_clicked',{id:selected.actionId,from:'detail'})}>Google Mapsで経路を見る ↗</a>
     <div className="breakdown">
       <div><b>{shortName(finalName)}へ直行</b><span>約{selected.originalRouteMinutes}分</span></div>
       <div><b>この寄り道をする</b><span>約{selected.viaRouteMinutes}分</span></div>
@@ -124,7 +149,7 @@ export default function App(){
     <p>「{friendlyNodeName(selected.nodeName)}」で、<br/><b>{friendlyAction(selected.actionName)}</b></p>
     <div className="time-big">+{selected.detourMinutes}分</div>
     <MapEmbed placeName={selected.nodeName}/>
-    <a className="secondary anchor map-open" href={googleMapsDirectionsUrl(currentName,selected.nodeName,finalName)} target="_blank" rel="noopener noreferrer" onClick={()=>track('navigation_clicked',{id:selected.actionId,from:'go'})}>Google Mapsで経路案内を開く ↗</a>
+    <a className="secondary anchor map-open" href={googleMapsDirectionsUrl(gps?gps.lat+','+gps.lng:currentName,selected.nodeName,finalName)} target="_blank" rel="noopener noreferrer" onClick={()=>track('navigation_clicked',{id:selected.actionId,from:'go'})}>Google Mapsで経路案内を開く ↗</a>
     <div className="checkpoint-box"><b>寄り道できたら</b><p>戻って「行ってきた」を押してください。寄り道の記録が残ります。</p></div>
     <button className="primary" onClick={()=>markCompleted(true)}>行ってきた</button>
     <button className="link" onClick={()=>markCompleted(false)}>今回は行かなかった</button>
@@ -149,10 +174,16 @@ export default function App(){
  </div>
 }
 
-function Questionnaire({step,setStep,answers,setAnswers,onDone}:{step:number;setStep:(n:number)=>void;answers:Answers;setAnswers:(a:Answers)=>void;onDone:()=>void}){
+function Questionnaire({step,setStep,answers,setAnswers,gps,gpsBusy,gpsError,requestGps,onDone}:{step:number;setStep:(n:number)=>void;answers:Answers;setAnswers:(a:Answers)=>void;gps:GPSPosition|null;gpsBusy:boolean;gpsError:string;requestGps:()=>void;onDone:()=>void}){
  const locs=nodeOptions.map(n=>[n.id,shortName(n.name)]);
  const qs=[
-  {q:'今どこにいますか？',body:<Choice value={answers.currentNodeId} setValue={v=>setAnswers({...answers,currentNodeId:String(v)})} options={locs}/>},
+  {q:'今どこにいますか？',body:<>
+    <button type="button" className="secondary gps-button" disabled={gpsBusy} onClick={requestGps}>{gpsBusy?'現在地を取得中…':gps?'現在地を取得済み（再取得）':'現在地を取得する'}</button>
+    {gps&&<p className="gps-notice">現在地を取得しました（精度 約{Math.round(gps.accuracy)}m）。Google Mapsの道案内に使います。</p>}
+    {gpsError&&<p role="alert" className="gps-error">{gpsError}</p>}
+    <p className="note">寄り道の所要時間は、下で選ぶ代表地点を基準に計算します。現在地は端末上でのみ扱い、保存しません。</p>
+    <Choice value={answers.currentNodeId} setValue={v=>setAnswers({...answers,currentNodeId:String(v)})} options={locs}/>
+   </>},
   {q:'最後にどこへ行きますか？',body:<Choice value={answers.finalNodeId} setValue={v=>setAnswers({...answers,finalNodeId:String(v)})} options={locs}/>},
   {q:'あとどのくらい時間がありますか？',body:<Choice value={answers.remainingTimeMin} setValue={v=>setAnswers({...answers,remainingTimeMin:Number(v)})} options={[[20,'20分'],[35,'35分'],[60,'60分'],[90,'90分以上']]}/>},
   {q:'今、何がしたいですか？',body:<InterestChoices values={answers.interestTagIds} setValues={v=>setAnswers({...answers,interestTagIds:v})}/>},
@@ -183,6 +214,8 @@ const interestChoices=[
 function InterestChoices({values,setValues}:{values:string[];setValues:(v:string[])=>void}){return <div className="choice-grid">{interestChoices.map(c=>{const active=c.tags.some(t=>values.includes(t));return <button key={c.label} className={active?'choice active':'choice'} onClick={()=>{const next=active?values.filter(v=>!c.tags.includes(v)):[...new Set([...values,...c.tags])];setValues(next)}}>{c.label}</button>})}</div>}
 
 function googleMapsQuery(placeName:string){
+ // Raw coordinates are passed through for the GPS origin only.
+ if(/^-?\\d+(?:\\.\\d+)?,-?\\d+(?:\\.\\d+)?$/.test(placeName)) return placeName;
  return friendlyNodeName(placeName)+' 彦根市 滋賀県';
 }
 
