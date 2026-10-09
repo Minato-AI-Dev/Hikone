@@ -82,6 +82,7 @@ export default function App(){
       <button className="exp-card strategy-card" onClick={()=>selectRec(r)}>
         <div className="strategy-head"><span className="pill">{r.matchingTags.length?'あなた向け':'ちょっと発見'}</span><span className="detour-badge">+{r.detourMinutes}分</span></div>
         <h3>{friendlyNodeName(r.nodeName)}</h3>
+        {r.dataStatus.includes('机上の概算')&&<small className="note">時間は仮の目安（現地未検証）</small>}
         <p className="experience-line">{friendlyAction(r.actionName)}</p>
         {r.matchingTags.length>0&&<p className="match-line">{r.matchingTags.join('・')}</p>}
         <p className="reason">{friendlyReason(r)}</p>
@@ -110,7 +111,7 @@ export default function App(){
       {selected.additionalDistanceM!==null&&<div><b>追加で歩く距離</b><span>約{selected.additionalDistanceM}m</span></div>}
     </div>
     <p className="route-result">帰る場所はそのまま。寄り道で <b>+{selected.detourMinutes}分</b> です。</p>
-    <p className="note">所要時間は目安です。現地の状況により変わることがあります。</p>
+    <p className="note">{selected.dataStatus.includes('机上の概算')?'この経路時間・滞在時間は現地未検証の概算です。移動前にGoogle Mapsで経路と余裕を確認してください。':'所要時間は目安です。現地の状況により変わることがあります。'}</p>
     {debugMode&&<div className="debug-box"><b>Debug</b><p>{selected.dataStatus}</p><p>ID: {selected.id} / Layer: {selected.layer}</p></div>}
     <button className="primary" onClick={beginExperience}>ここに寄る</button>
     <button className="link" onClick={()=>setScreen('results')}>別の候補を見る</button>
