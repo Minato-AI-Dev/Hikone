@@ -114,6 +114,7 @@ export default function App(){
         <p className="reason">{friendlyReason(r)}</p>
         <small>{shortName(finalName)}まで含めて 約{r.viaRouteMinutes}分{r.additionalDistanceM!==null?' / 追加約'+r.additionalDistanceM+'m':''}</small>
       </button>
+      {visitorStory(r.nodeId,nodeById(r.nodeId)?.category||'').source&&<a className="story-source" href={visitorStory(r.nodeId,nodeById(r.nodeId)?.category||'').source} target="_blank" rel="noopener noreferrer">このお話の参考資料を見る ↗</a>}
       <a className="result-map-link" href={googleMapsDirectionsUrl(gps?gps.lat+','+gps.lng:currentName,r.nodeName,finalName)} target="_blank" rel="noopener noreferrer" onClick={()=>track('navigation_clicked',{id:r.actionId,from:'results'})}>
         Google Mapsで経路を見る ↗
       </a>
@@ -128,6 +129,7 @@ export default function App(){
     <div className="detail-detour">+{selected.detourMinutes}分</div>
     <h2>{friendlyNodeName(selected.nodeName)}</h2>
     <p>{friendlyReason(selected)}</p>
+    {visitorStory(selected.nodeId,nodeById(selected.nodeId)?.category||'').source&&<a className="story-source" href={visitorStory(selected.nodeId,nodeById(selected.nodeId)?.category||'').source} target="_blank" rel="noopener noreferrer">このお話の参考資料を見る ↗</a>}
     <div className="mission"><small>ここですること</small><br/><b>{friendlyAction(selected.actionName)}</b></div>
     <MapEmbed placeName={selected.nodeName}/>
     <a className="result-map-link detail-map-link" href={googleMapsDirectionsUrl(gps?gps.lat+','+gps.lng:currentName,selected.nodeName,finalName)} target="_blank" rel="noopener noreferrer" onClick={()=>track('navigation_clicked',{id:selected.actionId,from:'detail'})}>Google Mapsで経路を見る ↗</a>

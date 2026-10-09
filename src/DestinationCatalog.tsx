@@ -57,6 +57,7 @@ export default function DestinationCatalog({onBack}:{onBack:()=>void}){
      <div className="catalog-item-head"><h3>{canonical(p)}</h3>{cautious(p)&&<span className="catalog-unverified">詳細確認中</span>}</div>
      <p className="catalog-category">{p.category}</p>
      <p className="catalog-desc">{visitorStory(p.id,p.category).text}</p>
+     {visitorStory(p.id,p.category).source&&<a className="story-source" href={visitorStory(p.id,p.category).source} target="_blank" rel="noopener noreferrer">このお話の参考資料を見る ↗</a>}
      <div className="catalog-tags">{(nodeTags[p.id]||[]).slice(0,3).map(t=><span key={t}>{tagNames[t]||t}</span>)}</div>
      <a className="catalog-map-link" href={maps(p)} target="_blank" rel="noopener noreferrer">Google Mapsで場所を見る ↗</a>
    </article>)}</div>
