@@ -1,11 +1,12 @@
 import { Answers, HistoryState, Recommendation, ResearchCandidate } from '../types';
 import { actions, actionsForNode, DB_V4_META, edges, locationStatus, nodeById, nodes, nodeTags, photoPriority, tagNames } from '../data/dbV4';
 import { completedIds } from './history';
+import { provisionalActions,provisionalEdges,provisionalNodeIds } from '../data/provisionalWalking';
 
 type Route={minutes:number;distance:number|null};
 
 function usableEdges(mode:string){
-  return edges.filter(e=>e.mode===mode && (e.policy==='暫定可'||e.policy==='仮運用') && typeof e.time==='number');
+  return [...edges,...provisionalEdges].filter(e=>e.mode===mode && ['暫定可','仮運用','概算Demo'].includes(e.policy) && typeof e.time==='number');
 }
 function shortest(from:string,to:string,mode:string):Route|null{
   if(from===to) return {minutes:0,distance:0};
@@ -62,11 +63,11 @@ export function recommend(answers:Answers,history:HistoryState|null):Recommendat
   for(const node of nodes){
     if(node.type!=='poi'&&node.type!=='area') continue;
     if(node.id===answers.currentNodeId||node.id===answers.finalNodeId) continue;
-    if(node.status!=='ACTIVE') continue;
+    if(node.status!=='ACTIVE'&&!provisionalNodeIds.has(node.id)) continue;
     if(!node.modes.includes(answers.availableMode)) continue;
-    if(!node.publicStatus.includes('公開')) continue;
-    const usableActions=actionsForNode(node.id)
-      .filter(a=>typeof a.minStay==='number'&&(a.timeStatus==='KNOWN'||a.timeStatus==='仮設定')&&!done.has(a.id))
+    if(!node.publicStatus.includes('公開')&&!provisionalNodeIds.has(node.id)) continue;
+    const usableActions=[...actionsForNode(node.id),...provisionalActions.filter(a=>a.nodeId===node.id)]
+      .filter(a=>typeof a.minStay==='number'&&(a.timeStatus==='KNOWN'||a.timeStatus==='仮設定'||a.timeStatus==='概算Demo')&&!done.has(a.id))
       .sort((a,b)=>{
         const am=actionSupportsExplicitTheme(a.type,answers.interestTagIds)?1:0;
         const bm=actionSupportsExplicitTheme(b.type,answers.interestTagIds)?1:0;
@@ -81,7 +82,9 @@ export function recommend(answers:Answers,history:HistoryState|null):Recommendat
     const toNode=shortest(answers.currentNodeId,node.id,answers.availableMode);
     const toFinal=shortest(node.id,answers.finalNodeId,answers.availableMode);
     if(!toNode||!toFinal) continue;
-    const via=toNode.minutes+(knownAction.minStay as number)+toFinal.minutes;
+    const estimated=provisionalNodeIds.has(node.id);
+    const margin=estimated?5:0;
+    const via=toNode.minutes+(knownAction.minStay as number)+toFinal.minutes+margin;
     if(via>answers.remainingTimeMin) continue;
     const viaDistance=toNode.distance===null||toFinal.distance===null?null:toNode.distance+toFinal.distance;
     const additionalDistance=original.distance===null||viaDistance===null?null:Math.max(0,viaDistance-original.distance);
@@ -94,7 +97,7 @@ export function recommend(answers:Answers,history:HistoryState|null):Recommendat
       reason:layer==='L1'
         ?'選んだテーマに合い、現在のV4データで時間成立を判定できる候補です。'
         :'明示テーマを置き換えず、発見枠として追加できる候補です。',
-      dataStatus:'実測/既存値と検索ベースの仮値を区別して使用。仮値は実証後に更新予定'
+      dataStatus:estimated?'徒歩時間・滞在時間ともに机上の概算です。安全余裕5分を含みます。現地検証前のDemo表示です。':'検索ベースの仮値を含みます。実証後に更新予定。'
     });
   }
   out.sort((a,b)=>{
@@ -110,7 +113,7 @@ function candidateBlockers(nodeId:string,answers:Answers){
   const blockers:string[]=[];
   if(node.status!=='ACTIVE') blockers.push('MVP状態: '+node.status);
   if(!node.modes.includes(answers.availableMode)) blockers.push('徒歩モード未確定');
-  const known=actionsForNode(nodeId).some(a=>typeof a.minStay==='number'&&(a.timeStatus==='KNOWN'||a.timeStatus==='仮設定'));
+  const known=[...actionsForNode(nodeId),...provisionalActions.filter(a=>a.nodeId===nodeId)].some(a=>typeof a.minStay==='number'&&['KNOWN','仮設定','概算Demo'].includes(a.timeStatus));
   if(!known) blockers.push('最低ACTION時間が未実測');
   const a=shortest(answers.currentNodeId,nodeId,answers.availableMode);
   const b=shortest(nodeId,answers.finalNodeId,answers.availableMode);
@@ -151,4 +154,4 @@ export function researchCandidates(answers:Answers):ResearchCandidate[]{
 export const dbStats=DB_V4_META;
 export const nodeOptions=nodes.filter(n=>['S01','D01','P01','P02'].includes(n.id));
 export const researchNodeCount=nodes.filter(n=>n.status==='RESEARCH'||n.status==='BACKLOG'||n.status==='CONDITIONAL').length;
-export const knownActionCount=actions.filter(a=>typeof a.minStay==='number'&&(a.timeStatus==='KNOWN'||a.timeStatus==='仮設定')).length;
+export const knownActionCount=actions.filter(a=>typeof a.minStay==='number'&&(a.timeStatus==='KNOWN'||a.timeStatus==='仮設定')).length+provisionalActions.length;
