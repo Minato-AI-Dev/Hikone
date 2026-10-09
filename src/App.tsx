@@ -5,8 +5,9 @@ import { addValidation, completeExperience, lastCompletedId, loadHistory, startE
 import { dbStats, knownActionCount, nodeOptions, recommend, researchCandidates, researchNodeCount } from './lib/recommend';
 import { track } from './lib/analytics';
 import HikoneAI from './HikoneAI';
+import DestinationCatalog from './DestinationCatalog';
 
-type Screen='home'|'ai'|'questions'|'results'|'detail'|'go'|'done'|'history';
+type Screen='home'|'ai'|'questions'|'results'|'detail'|'go'|'done'|'history'|'catalog';
 const defaultAnswers:Answers={currentNodeId:'S01',finalNodeId:'D01',remainingTimeMin:35,interestTagIds:[],availableMode:'徒歩',maxWalkMin:null,detourPreference:'少しなら',discoveryOptIn:true,firstVisit:true};
 const debugMode=new URLSearchParams(window.location.search).get('debug')==='1';
 
@@ -56,10 +57,13 @@ export default function App(){
     <p>今いる場所と帰る場所、残り時間に合わせて、今からできることを3つまで提案します。</p>
     {last&&<p className="muted">前回は「{last.type}」を体験しました。</p>}
     <button className="primary" onClick={beginQuestions}>選択肢から探す<span>5回ほどタップするだけです。</span></button>
+    <button className="secondary" onClick={()=>setScreen('catalog')}>彦根の行き先一覧を見る<span>歴史・ひこにゃん・写真・食などから探せます。</span></button>
     <button className="secondary ai-entry" onClick={beginAI}>自由入力で相談する<span>細かい希望があるときはこちら。</span></button>
     <p className="note">現在は徒歩での寄り道を中心に試作しています。時間は一部、公開情報や仮値を使っています。</p>
     {debugMode&&<DebugSummary/>}
    </section>}
+
+   {screen==='catalog'&&<DestinationCatalog onBack={()=>setScreen('home')}/>}
 
    {screen==='ai'&&<HikoneAI answers={answers} history={history} onBack={()=>setScreen('home')} onResolved={(a,r,intro,source)=>{
      setAnswers(a);setRecs(r);setResearch(debugMode?researchCandidates(a):[]);setAiIntro(intro);setAiSource(source);setScreen('results');
@@ -88,6 +92,7 @@ export default function App(){
       </a>
     </div>)}</div>
     {debugMode&&<DebugResults recs={recs} research={research}/>}
+    <button className="secondary" onClick={()=>setScreen('catalog')}>ほかの彦根の行き先も見る</button>
     <button className="secondary" onClick={beginQuestions}>条件を変える</button>
    </section>}
 
