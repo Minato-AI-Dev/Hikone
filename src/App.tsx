@@ -74,14 +74,19 @@ export default function App(){
     <div className="route-context"><b>{shortName(currentName)}</b><span>→</span><b>{shortName(finalName)}</b><small>残り {answers.remainingTimeMin}分</small></div>
     {answers.interestTagIds.length>0&&<div className="selected-tags">{friendlySelectedTags(answers.interestTagIds).map(t=><span key={t}>{t}</span>)}</div>}
     {!recs.length&&<div className="strict-empty"><b>今回は無理に寄り道をおすすめしません。</b><p>残り時間を増やすか、興味を変えると候補が出ることがあります。</p></div>}
-    <div className="cards">{recs.map(r=><button key={r.id} className="exp-card strategy-card" onClick={()=>selectRec(r)}>
-      <div className="strategy-head"><span className="pill">{r.matchingTags.length?'あなた向け':'ちょっと発見'}</span><span className="detour-badge">+{r.detourMinutes}分</span></div>
-      <h3>{friendlyNodeName(r.nodeName)}</h3>
-      <p className="experience-line">{friendlyAction(r.actionName)}</p>
-      {r.matchingTags.length>0&&<p className="match-line">{r.matchingTags.join('・')}</p>}
-      <p className="reason">{friendlyReason(r)}</p>
-      <small>{shortName(finalName)}まで含めて 約{r.viaRouteMinutes}分{r.additionalDistanceM!==null?' / 追加約'+r.additionalDistanceM+'m':''}</small>
-    </button>)}</div>
+    <div className="cards">{recs.map(r=><div key={r.id} className="result-card">
+      <button className="exp-card strategy-card" onClick={()=>selectRec(r)}>
+        <div className="strategy-head"><span className="pill">{r.matchingTags.length?'あなた向け':'ちょっと発見'}</span><span className="detour-badge">+{r.detourMinutes}分</span></div>
+        <h3>{friendlyNodeName(r.nodeName)}</h3>
+        <p className="experience-line">{friendlyAction(r.actionName)}</p>
+        {r.matchingTags.length>0&&<p className="match-line">{r.matchingTags.join('・')}</p>}
+        <p className="reason">{friendlyReason(r)}</p>
+        <small>{shortName(finalName)}まで含めて 約{r.viaRouteMinutes}分{r.additionalDistanceM!==null?' / 追加約'+r.additionalDistanceM+'m':''}</small>
+      </button>
+      <a className="result-map-link" href={googleMapsDirectionsUrl(currentName,r.nodeName,finalName)} target="_blank" rel="noopener noreferrer" onClick={()=>track('navigation_clicked',{id:r.actionId,from:'results'})}>
+        Google Mapsで経路を見る ↗
+      </a>
+    </div>)}</div>
     {debugMode&&<DebugResults recs={recs} research={research}/>}
     <button className="secondary" onClick={beginQuestions}>条件を変える</button>
    </section>}
@@ -93,6 +98,7 @@ export default function App(){
     <p>{friendlyReason(selected)}</p>
     <div className="mission"><small>ここですること</small><br/><b>{friendlyAction(selected.actionName)}</b></div>
     <MapEmbed placeName={selected.nodeName}/>
+    <a className="result-map-link detail-map-link" href={googleMapsDirectionsUrl(currentName,selected.nodeName,finalName)} target="_blank" rel="noopener noreferrer" onClick={()=>track('navigation_clicked',{id:selected.actionId,from:'detail'})}>Google Mapsで経路を見る ↗</a>
     <div className="breakdown">
       <div><b>{shortName(finalName)}へ直行</b><span>約{selected.originalRouteMinutes}分</span></div>
       <div><b>この寄り道をする</b><span>約{selected.viaRouteMinutes}分</span></div>
@@ -111,7 +117,7 @@ export default function App(){
     <p>「{friendlyNodeName(selected.nodeName)}」で、<br/><b>{friendlyAction(selected.actionName)}</b></p>
     <div className="time-big">+{selected.detourMinutes}分</div>
     <MapEmbed placeName={selected.nodeName}/>
-    <a className="secondary anchor map-open" href={googleMapsOpenUrl(selected.nodeName)} target="_blank" rel="noreferrer" onClick={()=>track('navigation_clicked',{id:selected.actionId})}>Google Mapsで開く</a>
+    <a className="secondary anchor map-open" href={googleMapsDirectionsUrl(currentName,selected.nodeName,finalName)} target="_blank" rel="noopener noreferrer" onClick={()=>track('navigation_clicked',{id:selected.actionId,from:'go'})}>Google Mapsで経路案内を開く ↗</a>
     <div className="checkpoint-box"><b>寄り道できたら</b><p>戻って「行ってきた」を押してください。寄り道の記録が残ります。</p></div>
     <button className="primary" onClick={()=>markCompleted(true)}>行ってきた</button>
     <button className="link" onClick={()=>markCompleted(false)}>今回は行かなかった</button>
@@ -175,6 +181,17 @@ function googleMapsQuery(placeName:string){
 
 function googleMapsEmbedUrl(placeName:string){
  return 'https://www.google.com/maps?q='+encodeURIComponent(googleMapsQuery(placeName))+'&output=embed';
+}
+
+function googleMapsDirectionsUrl(current:string,stop:string,final:string){
+ const p=new URLSearchParams({
+  api:'1',
+  origin:googleMapsQuery(current),
+  destination:googleMapsQuery(final),
+  waypoints:googleMapsQuery(stop),
+  travelmode:'walking'
+ });
+ return 'https://www.google.com/maps/dir/?'+p.toString();
 }
 
 function googleMapsOpenUrl(placeName:string){
