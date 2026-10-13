@@ -2,11 +2,19 @@ import { Answers, HistoryState, Recommendation, ResearchCandidate } from '../typ
 import { actions, actionsForNode, DB_V4_META, edges, locationStatus, nodeById, nodes, nodeTags, photoPriority, tagNames } from '../data/dbV4';
 import { completedIds } from './history';
 import { provisionalActions,provisionalEdges,provisionalNodeIds } from '../data/provisionalWalking';
+import { measuredEdges } from '../data/measuredWalking';
 
-type Route={minutes:number;distance:number|null};
+export type Route={minutes:number;distance:number|null};
+export type RoutedLegs=Record<string,Route>;
+const legKey=(from:string,to:string)=>from+'>'+to;
 
 function usableEdges(mode:string){
-  return [...edges,...provisionalEdges].filter(e=>e.mode===mode && ['暫定可','仮運用','概算Demo'].includes(e.policy) && typeof e.time==='number');
+  const verifiedPairs=new Set(measuredEdges.map(e=>[e.from,e.to].sort().join('|')));
+  return [...measuredEdges,...edges,...provisionalEdges].filter(e=>
+    e.mode===mode && ['実測済','暫定可','仮運用','概算Demo'].includes(e.policy) &&
+    typeof e.time==='number' &&
+    (e.policy==='実測済'||!verifiedPairs.has([e.from,e.to].sort().join('|')))
+  );
 }
 function shortest(from:string,to:string,mode:string):Route|null{
   if(from===to) return {minutes:0,distance:0};
@@ -55,8 +63,11 @@ function actionSupportsExplicitTheme(actionName:string,selected:string[]){
 function layerFor(nodeId:string,answers:Answers):'L1'|'L2'{
   return matchingTags(nodeId,answers.interestTagIds).length?'L1':'L2';
 }
-export function recommend(answers:Answers,history:HistoryState|null):Recommendation[]{
-  const original=shortest(answers.currentNodeId,answers.finalNodeId,answers.availableMode);
+export function recommend(answers:Answers,history:HistoryState|null,routed?:RoutedLegs):Recommendation[]{
+  const route=(a:string,b:string)=>routed
+    ? (a===b?{minutes:0,distance:0}:routed[legKey(a,b)]||null)
+    : shortest(a,b,answers.availableMode);
+  const original=route(answers.currentNodeId,answers.finalNodeId);
   if(!original) return [];
   const done=completedIds(history);
   const out:Recommendation[]=[];
@@ -79,11 +90,11 @@ export function recommend(answers:Answers,history:HistoryState|null):Recommendat
     if(layer==='L2'&&(!answers.discoveryOptIn||answers.detourPreference==='最短')) continue;
     if(layer==='L1'&&!actionSupportsExplicitTheme(knownAction.type,answers.interestTagIds)) continue;
 
-    const toNode=shortest(answers.currentNodeId,node.id,answers.availableMode);
-    const toFinal=shortest(node.id,answers.finalNodeId,answers.availableMode);
+    const toNode=route(answers.currentNodeId,node.id);
+    const toFinal=route(node.id,answers.finalNodeId);
     if(!toNode||!toFinal) continue;
     const estimated=provisionalNodeIds.has(node.id);
-    const margin=estimated?5:0;
+    const margin=routed?5:estimated?5:0;
     const via=toNode.minutes+(knownAction.minStay as number)+toFinal.minutes+margin;
     if(via>answers.remainingTimeMin) continue;
     const viaDistance=toNode.distance===null||toFinal.distance===null?null:toNode.distance+toFinal.distance;
@@ -97,7 +108,7 @@ export function recommend(answers:Answers,history:HistoryState|null):Recommendat
       reason:layer==='L1'
         ?'選んだテーマに合い、現在のV4データで時間成立を判定できる候補です。'
         :'明示テーマを置き換えず、発見枠として追加できる候補です。',
-      dataStatus:estimated?'徒歩時間・滞在時間ともに机上の概算です。安全余裕5分を含みます。現地検証前のDemo表示です。':'検索ベースの仮値を含みます。実証後に更新予定。'
+      dataStatus:routed?'地図経路APIによる徒歩推定に歩行ペース・天候補正と余裕5分を加算。滞在時間は一部仮設定です。':estimated?'徒歩時間・滞在時間ともに机上の概算です。安全余裕5分を含みます。現地検証前のDemo表示です。':'検索ベースの仮値を含みます。実証後に更新予定。'
     });
   }
   out.sort((a,b)=>{
@@ -152,6 +163,16 @@ export function researchCandidates(answers:Answers):ResearchCandidate[]{
 }
 
 export const dbStats=DB_V4_META;
-export const nodeOptions=nodes.filter(n=>['S01','D01','P01','P02'].includes(n.id));
+export const nodeOptions=nodes.filter(n=>['S01','D01','P01','P02','PK01','PK02','PK03','PK04'].includes(n.id));
 export const researchNodeCount=nodes.filter(n=>n.status==='RESEARCH'||n.status==='BACKLOG'||n.status==='CONDITIONAL').length;
 export const knownActionCount=actions.filter(a=>typeof a.minStay==='number'&&(a.timeStatus==='KNOWN'||a.timeStatus==='仮設定')).length+provisionalActions.length;
+
+// The same eligibility screen used for the API-powered and offline recommendations.
+export function routingCandidateIds(a:Answers,h:HistoryState|null):string[]{
+ const done=completedIds(h);
+ return nodes.filter(n=>(n.type==='poi'||n.type==='area') && n.id!==a.currentNodeId && n.id!==a.finalNodeId && (n.status==='ACTIVE'||provisionalNodeIds.has(n.id)) && n.modes.includes('徒歩') && (n.publicStatus.includes('公開')||provisionalNodeIds.has(n.id)))
+ .filter(n=>[...actionsForNode(n.id),...provisionalActions.filter(x=>x.nodeId===n.id)].some(x=>typeof x.minStay==='number'&&!done.has(x.id)&&['KNOWN','仮設定','概算Demo'].includes(x.timeStatus)))
+ .filter(n=>{const tags=matchingTags(n.id,a.interestTagIds);return tags.length>0||a.discoveryOptIn&&a.detourPreference!=='最短';})
+ .sort((x,y)=>matchingTags(y.id,a.interestTagIds).length-matchingTags(x.id,a.interestTagIds).length)
+ .slice(0,18).map(n=>n.id);
+}
