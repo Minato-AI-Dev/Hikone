@@ -21,6 +21,12 @@ jobs:
         with:
           node-version: 22
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+      - name: Test
+        run: npm test
+      - name: Backend types
+        run: npm run typecheck:api
       - name: Build
-        run: npm run build
+        env:
+          VITE_WALKING_ROUTE_ENDPOINT: https://routing-ci.example/api/walking-routes
+        run: npm run build:pages
