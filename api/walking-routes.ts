@@ -1,5 +1,5 @@
 import { isRecord, prepareJson, type ApiRequest, type ApiResponse } from '../server/http.js';
-import { routingLocation } from '../server/locations.js';
+import { routingLocation, routingWaypoint } from '../server/locations.js';
 import { reserveBudget } from '../server/rateLimit.js';
 type Pair={from:string;to:string};
 export default async function handler(req:ApiRequest,res:ApiResponse) {
@@ -32,7 +32,7 @@ export default async function handler(req:ApiRequest,res:ApiResponse) {
     try {
       const response=await fetch('https://routes.googleapis.com/directions/v2:computeRoutes',{
         method:'POST',headers:{'Content-Type':'application/json','X-Goog-Api-Key':key,'X-Goog-FieldMask':'routes.duration,routes.distanceMeters,geocodingResults'},signal:controller.signal,
-        body:JSON.stringify({origin:{address:routingLocation(p.from)!.address},destination:{address:routingLocation(p.to)!.address},travelMode:'WALK',languageCode:'ja-JP',units:'METRIC'})
+        body:JSON.stringify({origin:routingWaypoint(p.from),destination:routingWaypoint(p.to),travelMode:'WALK',languageCode:'ja-JP',units:'METRIC'})
       });
       if(!response.ok)continue;
       const data=await response.json();const route=data?.routes?.[0];

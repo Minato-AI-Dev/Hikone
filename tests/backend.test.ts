@@ -10,10 +10,10 @@ beforeEach(()=>{
   vi.stubGlobal('fetch',vi.fn(async(url:string)=>url==='https://redis.example'?{ok:true,json:async()=>({result:1})}:{ok:true,json:async()=>({routes:[{duration:'600.5s',distanceMeters:800}]})}));
 });
 afterEach(()=>{vi.unstubAllEnvs();vi.unstubAllGlobals();vi.useRealTimers()});
-it('uses server addresses and walking-only fields without returning keys',async()=>{
+it('uses server place identifiers and walking-only fields without returning keys',async()=>{
   const r=res();await handler(req(),r);expect(r.code).toBe(200);expect(r.body.legs['S01>D01']).toEqual({seconds:600.5,meters:800});
   const calls=vi.mocked(fetch).mock.calls;const sent=JSON.parse(calls[1][1]!.body as string);
-  expect(sent).toMatchObject({travelMode:'WALK',languageCode:'ja-JP',origin:{address:'彦根城 表門券売所付近 滋賀県彦根市'}});
+  expect(sent).toMatchObject({travelMode:'WALK',languageCode:'ja-JP',origin:{placeId:'ChIJFUSUCwDVA2ARZupipKG4HAU'},destination:{placeId:'ChIJqSwSmsjUA2ARUaJr69Vmcc4'}});
   expect(JSON.stringify(r.body)).not.toContain('secret');expect(r.headers['Cache-Control']).toBe('no-store');
 });
 it('deduplicates and resolves same-place pairs without Google',async()=>{

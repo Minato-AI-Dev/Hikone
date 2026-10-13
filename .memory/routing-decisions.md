@@ -2,7 +2,8 @@
 
 - 公開React画面はGitHub Pagesの/Hikone/。VercelはAPI専用。
 - IDだけを送信し、サーバーが彦根DBの地名を決定する。GPSは外部ナビ用。
-- 地点は未検証の地名指定。成功した経路も入口照合の完了を意味しない。
+- S01表門券売所、D01彦根駅、P01キャッスルロードは2026-10-13に部分一致なしの正式名称から取得したPlace IDを指定。他は地名指定。全地点provisionalで、駅出口・街路端点の現地照合は未完了。
+- Googleキー/saltとMarketplace RedisはVercel Production/Previewへ設定済み。共有ストアはhikone-rate-limit、アプリ日次上限routes300区間・AI50回（UTC）。Pagesの徒歩endpoint変数も設定済み。
 - 課金前にRedis RESTの原子的な共有制限を予約。設定/ストア/Vercelの信頼IPが欠ける場合は停止。
 - API失敗時は実測のみを使用。実測EDGEは現在空。仮値は明示的ローカルデモのみ、本番Pagesでデモ公開を禁止。
 - 歩行係数・状況係数はwalkingModel.ts。体験と余裕5分を歩行時間と分離。
