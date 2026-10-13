@@ -29,6 +29,16 @@ it('rate limit rejects before Google and sends Retry-After',async()=>{vi.mocked(
 it('store failure never bypasses protection',async()=>{vi.mocked(fetch).mockRejectedValue(new Error('redis-secret-test'));const r=res();await handler(req(),r);expect(r.code).toBe(503);expect(fetch).toHaveBeenCalledTimes(1);expect(JSON.stringify(r.body)).not.toContain('secret')});
 it('does not trust client x-forwarded-for',async()=>{const r=req();delete (r.headers as any)['x-vercel-forwarded-for'];(r.headers as any)['x-forwarded-for']='203.0.113.9';expect(await reserveBudget(r,'routes',1)).toBe('unavailable');expect(fetch).not.toHaveBeenCalled()});
 it('hashes the IP in atomic store command and reserves units',async()=>{await reserveBudget(req(),'routes',17);const body=JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);expect(body[0]).toBe('EVAL');expect(body.at(-1)).toBe(17);expect(JSON.stringify(body)).not.toContain('203.0.113.8')});
+it('accepts native Vercel Marketplace Redis variables',async()=>{
+  vi.stubEnv('UPSTASH_REDIS_REST_URL','');vi.stubEnv('UPSTASH_REDIS_REST_TOKEN','');
+  vi.stubEnv('KV_REST_API_URL','https://redis.example');vi.stubEnv('KV_REST_API_TOKEN','marketplace-test-token');
+  expect(await reserveBudget(req(),'routes',1)).toBe('allowed');
+});
+it('never mixes a custom Redis URL with the Marketplace token',async()=>{
+  vi.stubEnv('UPSTASH_REDIS_REST_URL','https://custom.example');vi.stubEnv('UPSTASH_REDIS_REST_TOKEN','');
+  vi.stubEnv('KV_REST_API_URL','https://redis.example');vi.stubEnv('KV_REST_API_TOKEN','marketplace-test-token');
+  expect(await reserveBudget(req(),'routes',1)).toBe('unavailable');expect(fetch).not.toHaveBeenCalled();
+});
 it('omits failed legs without inventing results',async()=>{
   vi.mocked(fetch).mockImplementation(async(url)=>String(url)==='https://redis.example'?{ok:true,json:async()=>({result:1})} as Response: {ok:true,json:async()=>({routes:[{duration:'bad',distanceMeters:-1}]})} as Response);
   const r=res();await handler(req(),r);expect(r.code).toBe(502);

@@ -34,6 +34,8 @@ HIKONE_RATE_LIMIT_SALT=<ランダムな32文字以上の秘密文字列>
 
 同じ本番の呼出しを受けるデプロイは同じストアとsaltを使う。Previewのテストは別ストアが望ましい。IPはVercelの信頼できる`x-vercel-forwarded-for`から取得し、HMAC化して保存する。キーは約2分で失効し、経路・位置・入力文を保存しない。
 
+Vercel Marketplaceから接続したUpstashは`KV_REST_API_URL`と書込可能な`KV_REST_API_TOKEN`を自動設定するため、その組を利用できる。カスタムの`UPSTASH_REDIS_REST_*`が片方でも設定されている場合はカスタム組のみを使用し、異なるURLとトークンを混ぜない。`KV_REST_API_READ_ONLY_TOKEN`は書込制限に使用しない。
+
 現在の固定上限:
 
 | API | 同一IP / 分 | 全体 / 分 |

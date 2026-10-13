@@ -10,7 +10,11 @@ redis.call('INCR', KEYS[1]); redis.call('EXPIRE', KEYS[1], 120)
 redis.call('INCRBY', KEYS[2], ARGV[3]); redis.call('EXPIRE', KEYS[2], 120)
 return 1`;
 export async function reserveBudget(req:ApiRequest,service:'routes'|'ai',units:number):Promise<LimitResult> {
-  const url=process.env.UPSTASH_REDIS_REST_URL,token=process.env.UPSTASH_REDIS_REST_TOKEN,salt=process.env.HIKONE_RATE_LIMIT_SALT;
+  // Select a complete namespace; never send one provider's token to another URL.
+  const custom=Boolean(process.env.UPSTASH_REDIS_REST_URL||process.env.UPSTASH_REDIS_REST_TOKEN);
+  const url=custom?process.env.UPSTASH_REDIS_REST_URL:process.env.KV_REST_API_URL;
+  const token=custom?process.env.UPSTASH_REDIS_REST_TOKEN:process.env.KV_REST_API_TOKEN;
+  const salt=process.env.HIKONE_RATE_LIMIT_SALT;
   // Vercel overwrites this header. Never trust generic x-forwarded-for.
   const ip=header(req,'x-vercel-forwarded-for').trim();
   if(!url||!/^https:\/\//.test(url)||!token||!salt||salt.length<32||!isIP(ip))return 'unavailable';
