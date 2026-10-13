@@ -3,7 +3,7 @@ import { actions, nodeById, tagNames } from './data/dbV4';
 import { Answers, HistoryState, Recommendation, ResearchCandidate } from './types';
 import { addValidation, completeExperience, lastCompletedId, loadHistory, startExperience } from './lib/history';
 import { dbStats, knownActionCount, nodeOptions, recommend, researchCandidates, researchNodeCount } from './lib/recommend';
-import { track } from './lib/analytics';
+import { track, downloadAnalytics, hasAnalyticsConsent, setAnalyticsConsent } from './lib/analytics';
 import HikoneAI from './HikoneAI';
 import DestinationCatalog from './DestinationCatalog';
 import { visitorStory } from './data/visitorStories';
@@ -25,6 +25,7 @@ function getGps():Promise<GPSPosition>{
 
 export default function App(){
  const [history,setHistory]=useState<HistoryState|null>(()=>loadHistory());
+ const [analyticsConsent,setConsent]=useState<boolean>(()=>hasAnalyticsConsent());
  const [screen,setScreen]=useState<Screen>('home');
  const [step,setStep]=useState(0);
  const [answers,setAnswers]=useState<Answers>(defaultAnswers);
@@ -85,6 +86,9 @@ export default function App(){
     <button className="secondary" onClick={()=>setScreen('catalog')}>彦根の行き先一覧を見る<span>歴史・ひこにゃん・写真・食などから探せます。</span></button>
     <button className="secondary ai-entry" onClick={beginAI}>自由入力で相談する<span>細かい希望があるときはこちら。</span></button>
     <p className="note">現在は徒歩での寄り道を中心に試作しています。時間は一部、公開情報や仮値を使っています。</p>
+    <label className="catalog-check"><input type="checkbox" checked={analyticsConsent} onChange={e=>{setConsent(e.target.checked);setAnalyticsConsent(e.target.checked);track('analytics_consent_changed',{enabled:e.target.checked})}}/> 実証調査に協力する（利用状況をこの端末に記録）</label>
+    <p className="note">位置情報や自由入力の本文は記録しません。記録はこの端末内に保存され、送信されません。</p>
+    {analyticsConsent&&<button className="secondary" onClick={downloadAnalytics}>調査ログをCSVで保存する</button>}
     {debugMode&&<DebugSummary/>}
    </section>}
 
@@ -99,11 +103,11 @@ export default function App(){
    {screen==='results'&&<section>
     <p className="eyebrow">今から行けるところ</p>
     <h2>{recs.length?'このあたりがおすすめです':'今の条件では、寄り道なしが安心です'}</h2>
-    {debugMode&&aiIntro&&<div className="ai-summary"><p>{aiIntro}</p></div>}
+    {aiIntro&&<div className="ai-summary"><p>{aiIntro}</p></div>}
     {gps&&<p className="gps-notice">Google Mapsの出発点には取得した現在地を使います。下の所要時間は選択した出発地点（{shortName(currentName)}）を基準とした参考値です。</p>}
     <div className="route-context"><b>{shortName(currentName)}</b><span>→</span><b>{shortName(finalName)}</b><small>残り {answers.remainingTimeMin}分</small></div>
     {answers.interestTagIds.length>0&&<div className="selected-tags">{friendlySelectedTags(answers.interestTagIds).map(t=><span key={t}>{t}</span>)}</div>}
-    {!recs.length&&<div className="strict-empty"><b>今回は無理に寄り道をおすすめしません。</b><p>残り時間を増やすか、興味を変えると候補が出ることがあります。</p></div>}
+    {!recs.length&&<div className="strict-empty"><b>今回は無理に寄り道をおすすめしません。</b><p>出発地・帰着地の移動時間が未登録の可能性もあります。特に駐車場からのルートは現地計測が完了するまで推薦できません。場所や残り時間を変えてお試しください。</p></div>}
     <div className="cards">{recs.map(r=><div key={r.id} className="result-card">
       <button className="exp-card strategy-card" onClick={()=>selectRec(r)}>
         <div className="strategy-head"><span className="pill">{r.matchingTags.length?'あなた向け':'ちょっと発見'}</span><span className="detour-badge">+{r.detourMinutes}分</span></div>
@@ -112,6 +116,7 @@ export default function App(){
         <p className="experience-line">{friendlyAction(r.actionName)}</p>
         {r.matchingTags.length>0&&<p className="match-line">{r.matchingTags.join('・')}</p>}
         <p className="reason">{friendlyReason(r)}</p>
+        {r.reason&&<p className="match-line">{r.reason}</p>}
         <small>{shortName(finalName)}まで含めて 約{r.viaRouteMinutes}分{r.additionalDistanceM!==null?' / 追加約'+r.additionalDistanceM+'m':''}</small>
       </button>
       {visitorStory(r.nodeId,nodeById(r.nodeId)?.category||'').source&&<a className="story-source" href={visitorStory(r.nodeId,nodeById(r.nodeId)?.category||'').source} target="_blank" rel="noopener noreferrer">このお話の参考資料を見る ↗</a>}
@@ -129,6 +134,7 @@ export default function App(){
     <div className="detail-detour">+{selected.detourMinutes}分</div>
     <h2>{friendlyNodeName(selected.nodeName)}</h2>
     <p>{friendlyReason(selected)}</p>
+    {selected.reason&&<p className="match-line">{selected.reason}</p>}
     {visitorStory(selected.nodeId,nodeById(selected.nodeId)?.category||'').source&&<a className="story-source" href={visitorStory(selected.nodeId,nodeById(selected.nodeId)?.category||'').source} target="_blank" rel="noopener noreferrer">このお話の参考資料を見る ↗</a>}
     <div className="mission"><small>ここですること</small><br/><b>{friendlyAction(selected.actionName)}</b></div>
     <MapEmbed placeName={selected.nodeName}/>
