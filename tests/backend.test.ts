@@ -49,6 +49,12 @@ it('omits failed legs without inventing results',async()=>{
   vi.mocked(fetch).mockImplementation(async(url)=>String(url)==='https://redis.example'?{ok:true,json:async()=>({result:1})} as Response: {ok:true,json:async()=>({routes:[{duration:'bad',distanceMeters:-1}]})} as Response);
   const r=res();await handler(req(),r);expect(r.code).toBe(502);
 });
+it('rejects a partial geocoding match even when walking duration is valid',async()=>{
+  vi.mocked(fetch).mockResolvedValueOnce({ok:true,json:async()=>({result:1})} as Response)
+    .mockResolvedValueOnce({ok:true,json:async()=>({routes:[{duration:'600s',distanceMeters:800}],geocodingResults:{origin:{partialMatch:true},destination:{placeId:'test-id'}}})} as Response);
+  const r=res();await handler(req(),r);expect(r.code).toBe(502);
+  expect(r.body.unresolvedPairs).toEqual(['S01>D01']);
+});
 it('returns partial success without filling failed legs',async()=>{
   vi.mocked(fetch).mockResolvedValueOnce({ok:true,json:async()=>({result:1})} as Response)
     .mockResolvedValueOnce({ok:true,json:async()=>({routes:[{duration:'600s',distanceMeters:800}]})} as Response)

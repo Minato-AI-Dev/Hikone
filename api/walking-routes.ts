@@ -23,6 +23,7 @@ export default async function handler(req:ApiRequest,res:ApiResponse) {
     return res.status(budget==='limited'?429:503).json({error:budget==='limited'?'Request limit reached':'Routing protection unavailable'});
   }
   const legs:Record<string,{seconds:number;meters:number}>={};
+  const unresolvedPairs:string[]=[];
   for(const p of unique)if(p.from===p.to)legs[p.from+'>'+p.to]={seconds:0,meters:0};
   const deadline=Date.now()+18000;let index=0;
   const worker=async()=>{while(index<paid.length&&Date.now()<deadline) {
@@ -30,11 +31,15 @@ export default async function handler(req:ApiRequest,res:ApiResponse) {
     const timer=setTimeout(()=>controller.abort(),Math.min(4000,Math.max(1,deadline-Date.now())));
     try {
       const response=await fetch('https://routes.googleapis.com/directions/v2:computeRoutes',{
-        method:'POST',headers:{'Content-Type':'application/json','X-Goog-Api-Key':key,'X-Goog-FieldMask':'routes.duration,routes.distanceMeters'},signal:controller.signal,
+        method:'POST',headers:{'Content-Type':'application/json','X-Goog-Api-Key':key,'X-Goog-FieldMask':'routes.duration,routes.distanceMeters,geocodingResults'},signal:controller.signal,
         body:JSON.stringify({origin:{address:routingLocation(p.from)!.address},destination:{address:routingLocation(p.to)!.address},travelMode:'WALK',languageCode:'ja-JP',units:'METRIC'})
       });
       if(!response.ok)continue;
       const data=await response.json();const route=data?.routes?.[0];
+      const geocoded=[data?.geocodingResults?.origin,data?.geocodingResults?.destination];
+      if(geocoded.some(point=>point?.partialMatch===true||Boolean(point?.geocoderStatus?.code))) {
+        unresolvedPairs.push(p.from+'>'+p.to);continue;
+      }
       if(typeof route?.duration!=='string'||!/^\d+(?:\.\d+)?s$/.test(route.duration))continue;
       const seconds=Number(route.duration.slice(0,-1)),meters=route.distanceMeters;
       if(Number.isFinite(seconds)&&seconds>0&&seconds<=86400&&typeof meters==='number'&&Number.isFinite(meters)&&meters>0&&meters<=100000)
@@ -42,6 +47,6 @@ export default async function handler(req:ApiRequest,res:ApiResponse) {
     } catch {/* Upstream errors must not disclose credentials. */} finally {clearTimeout(timer);}
   }};
   await Promise.all(Array.from({length:Math.min(4,paid.length)},worker));
-  if(!Object.keys(legs).length)return res.status(502).json({error:'Walking routes unavailable'});
-  return res.status(200).json({legs,locationVerification:'provisional',partial:Object.keys(legs).length<unique.length});
+  if(!Object.keys(legs).length)return res.status(502).json({error:'Walking routes unavailable',unresolvedPairs});
+  return res.status(200).json({legs,locationVerification:'provisional',partial:Object.keys(legs).length<unique.length,unresolvedPairs});
 }
