@@ -2,11 +2,17 @@ import { Answers, HistoryState, Recommendation, ResearchCandidate } from '../typ
 import { actions, actionsForNode, DB_V4_META, edges, locationStatus, nodeById, nodes, nodeTags, photoPriority, tagNames } from '../data/dbV4';
 import { completedIds } from './history';
 import { provisionalActions,provisionalEdges,provisionalNodeIds } from '../data/provisionalWalking';
+import { measuredEdges } from '../data/measuredWalking';
 
 type Route={minutes:number;distance:number|null};
 
 function usableEdges(mode:string){
-  return [...edges,...provisionalEdges].filter(e=>e.mode===mode && ['暫定可','仮運用','概算Demo'].includes(e.policy) && typeof e.time==='number');
+  const verifiedPairs=new Set(measuredEdges.map(e=>[e.from,e.to].sort().join('|')));
+  return [...measuredEdges,...edges,...provisionalEdges].filter(e=>
+    e.mode===mode && ['実測済','暫定可','仮運用','概算Demo'].includes(e.policy) &&
+    typeof e.time==='number' &&
+    (e.policy==='実測済'||!verifiedPairs.has([e.from,e.to].sort().join('|')))
+  );
 }
 function shortest(from:string,to:string,mode:string):Route|null{
   if(from===to) return {minutes:0,distance:0};
@@ -152,6 +158,6 @@ export function researchCandidates(answers:Answers):ResearchCandidate[]{
 }
 
 export const dbStats=DB_V4_META;
-export const nodeOptions=nodes.filter(n=>['S01','D01','P01','P02'].includes(n.id));
+export const nodeOptions=nodes.filter(n=>['S01','D01','P01','P02','PK01','PK02','PK03','PK04'].includes(n.id));
 export const researchNodeCount=nodes.filter(n=>n.status==='RESEARCH'||n.status==='BACKLOG'||n.status==='CONDITIONAL').length;
 export const knownActionCount=actions.filter(a=>typeof a.minStay==='number'&&(a.timeStatus==='KNOWN'||a.timeStatus==='仮設定')).length+provisionalActions.length;
