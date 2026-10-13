@@ -36,6 +36,11 @@ export const interestOptions = [
 ];
 
 export const nodes:DbNode[] = [
+{id:"PK01",name:"京橋口駐車場",type:"start",category:"駐車場",layer:"L1",status:"RESEARCH",modes:"徒歩",publicStatus:"公開・駐車条件要確認",cluster:"CASTLE_TOWN",note:"移動EDGE未実測。計測完了まで自動推薦対象外"},
+{id:"PK02",name:"二の丸駐車場",type:"start",category:"駐車場",layer:"L1",status:"RESEARCH",modes:"徒歩",publicStatus:"公開・駐車条件要確認",cluster:"CASTLE",note:"移動EDGE未実測。計測完了まで自動推薦対象外"},
+{id:"PK03",name:"桜場駐車場",type:"start",category:"駐車場",layer:"L1",status:"RESEARCH",modes:"徒歩",publicStatus:"公開・駐車条件要確認",cluster:"CASTLE",note:"移動EDGE未実測。計測完了まで自動推薦対象外"},
+{id:"PK04",name:"大手前駐車場",type:"start",category:"駐車場",layer:"L1",status:"RESEARCH",modes:"徒歩",publicStatus:"公開・駐車条件要確認",cluster:"CASTLE",note:"移動EDGE未実測。計測完了まで自動推薦対象外"},
+
 {id:"S01",name:"彦根城 表門券売所付近",type:"start",category:"城・史跡",layer:"L1",status:"ACTIVE",modes:"徒歩/自転車/車",publicStatus:"公開",cluster:"CASTLE",note:"既存DB起点"},
 {id:"D01",name:"JR彦根駅 西口",type:"terminal",category:"交通",layer:"L1",status:"ACTIVE",modes:"徒歩/自転車/車",publicStatus:"公開",cluster:"STATION",note:"既存DB終点"},
 {id:"P01",name:"夢京橋キャッスルロード北端（京橋南詰）",type:"poi",category:"街路・商業",layer:"L1/L2",status:"ACTIVE",modes:"徒歩/自転車",publicStatus:"公開",cluster:"CASTLE_TOWN",note:"主要訪問地点。固定ルートではなく地点として扱う"},
