@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Answers, HistoryState, Recommendation } from './types';
-import { recommend } from './lib/recommend';
+import { autoRecommend } from './lib/walkingRoutes';
 import { applyAIPresentation, presentWithHikoneAI, understandWithHikoneAI } from './lib/hikoneAI';
 import { track } from './lib/analytics';
 
@@ -10,7 +10,7 @@ export default function HikoneAI({answers,history,onResolved,onBack}:{answers:An
  const submit=async()=>{const text=message.trim();if(!text||busy)return;setBusy(true);track('hikone_ai_started');setStatus('希望に合う寄り道を探しています…');
  try{
   const understood=await understandWithHikoneAI(text);const merged:Answers={...answers,...understood.answers,interestTagIds:understood.answers.interestTagIds??answers.interestTagIds};
-  setStatus('時間に合う場所を確認しています…');const base=recommend(merged,history);
+  setStatus('時間に合う場所を確認しています…');const routing=await autoRecommend(merged,history);const base=routing.recommendations;
   if(!base.length){onResolved(merged,[],'今の条件では寄り道候補が見つかりませんでした。時間や行き先を変えてみてください。',understood.source);return}
   setStatus('おすすめを準備しています…');const presentation=await presentWithHikoneAI(text,merged,base);const final=applyAIPresentation(base,presentation);
   const source=understood.source==='ai'&&presentation.source==='ai'?'ai':'fallback';track('hikone_ai_completed',{source,count:final.length});onResolved(merged,final,presentation.intro,source);
