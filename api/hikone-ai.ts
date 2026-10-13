@@ -1,5 +1,5 @@
-import { isRecord, prepareJson, type ApiRequest, type ApiResponse } from '../server/http';
-import { reserveBudget } from '../server/rateLimit';
+import { isRecord, prepareJson, type ApiRequest, type ApiResponse } from '../server/http.js';
+import { reserveBudget } from '../server/rateLimit.js';
 type JsonRecord=Record<string,unknown>;
 const allowedNodeIds=['S01','D01','P01','P02'];
 const allowedTags=['T_HIKONYAN','T_PHOTO','T_WALK','T_FOOD','T_SHOP','T_HISTORY','T_MODERN','T_ARCH','T_LAKE','T_SCENERY','T_STREETSCAPE','T_NATURE','T_RIVER','T_GARDEN'];

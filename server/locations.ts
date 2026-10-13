@@ -1,5 +1,5 @@
-import { nodes } from '../src/data/dbV4';
-import { provisionalNodeIds } from '../src/data/provisionalWalking';
+import { nodes } from '../src/data/dbV4.js';
+import { provisionalNodeIds } from '../src/data/provisionalWalking.js';
 export type RoutingLocation = { nodeId:string; name:string; address:string; verificationStatus:'verified'|'provisional'|'unresolved' };
 // No entrance coordinates have been verified. API success does not certify geocoding.
 export const routingLocations:Record<string,RoutingLocation> = Object.fromEntries(nodes

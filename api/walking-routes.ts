@@ -1,6 +1,6 @@
-import { isRecord, prepareJson, type ApiRequest, type ApiResponse } from '../server/http';
-import { routingLocation } from '../server/locations';
-import { reserveBudget } from '../server/rateLimit';
+import { isRecord, prepareJson, type ApiRequest, type ApiResponse } from '../server/http.js';
+import { routingLocation } from '../server/locations.js';
+import { reserveBudget } from '../server/rateLimit.js';
 type Pair={from:string;to:string};
 export default async function handler(req:ApiRequest,res:ApiResponse) {
   if(!prepareJson(req,res))return;

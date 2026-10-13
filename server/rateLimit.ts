@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { isIP } from 'node:net';
-import { header, type ApiRequest } from './http';
+import { header, type ApiRequest } from './http.js';
 export type LimitResult = 'allowed'|'limited'|'unavailable';
 // Atomic reservations; fixed windows can double bursts at a boundary. Also set Google quotas.
 const script=`local ip = tonumber(redis.call('GET', KEYS[1]) or '0')
