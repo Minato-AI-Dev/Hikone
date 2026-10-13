@@ -9,6 +9,8 @@ export type Answers={
   detourPreference:DetourPreference;
   discoveryOptIn:boolean;
   firstVisit:boolean;
+  walkingPace?:'standard'|'relaxed'|'slow';
+  walkingConditions?:'normal'|'rain'|'heat';
 };
 export type VisitRecord={
   experienceId:string; startedAt:string; completedAt?:string; completed:boolean;
