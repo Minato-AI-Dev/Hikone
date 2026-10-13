@@ -3,22 +3,23 @@ import { actions, actionsForNode, DB_V4_META, edges, locationStatus, nodeById, n
 import { completedIds } from './history';
 import { provisionalActions,provisionalEdges,provisionalNodeIds } from '../data/provisionalWalking';
 import { measuredEdges } from '../data/measuredWalking';
+import { adjustedMinutes, WALKING_MODEL } from './walkingModel';
 
 export type Route={minutes:number;distance:number|null};
 export type RoutedLegs=Record<string,Route>;
 const legKey=(from:string,to:string)=>from+'>'+to;
 
-function usableEdges(mode:string){
+function usableEdges(mode:string,measuredOnly=false){
   const verifiedPairs=new Set(measuredEdges.map(e=>[e.from,e.to].sort().join('|')));
   return [...measuredEdges,...edges,...provisionalEdges].filter(e=>
-    e.mode===mode && ['実測済','暫定可','仮運用','概算Demo'].includes(e.policy) &&
+    e.mode===mode && (measuredOnly?e.policy==='実測済':['実測済','暫定可','仮運用','概算Demo'].includes(e.policy)) &&
     typeof e.time==='number' &&
     (e.policy==='実測済'||!verifiedPairs.has([e.from,e.to].sort().join('|')))
   );
 }
-function shortest(from:string,to:string,mode:string):Route|null{
+function shortest(from:string,to:string,mode:string,measuredOnly=false):Route|null{
   if(from===to) return {minutes:0,distance:0};
-  const es=usableEdges(mode);
+  const es=usableEdges(mode,measuredOnly);
   const adj=new Map<string,Array<{to:string;minutes:number;distance:number|null}>>();
   const add=(a:string,b:string,m:number,d:number|null)=>{
     const list=adj.get(a)||[];list.push({to:b,minutes:m,distance:d});adj.set(a,list);
@@ -63,10 +64,12 @@ function actionSupportsExplicitTheme(actionName:string,selected:string[]){
 function layerFor(nodeId:string,answers:Answers):'L1'|'L2'{
   return matchingTags(nodeId,answers.interestTagIds).length?'L1':'L2';
 }
-export function recommend(answers:Answers,history:HistoryState|null,routed?:RoutedLegs):Recommendation[]{
+export function recommend(answers:Answers,history:HistoryState|null,routed?:RoutedLegs,source:'maps'|'measured'|'demo'=routed?'maps':'demo'):Recommendation[]{
+  if(!Number.isFinite(answers.remainingTimeMin)||answers.remainingTimeMin<0||
+    (answers.maxWalkMin!==null&&(!Number.isFinite(answers.maxWalkMin)||answers.maxWalkMin<0)))return [];
   const route=(a:string,b:string)=>routed
     ? (a===b?{minutes:0,distance:0}:routed[legKey(a,b)]||null)
-    : shortest(a,b,answers.availableMode);
+    : (()=>{const leg=shortest(a,b,answers.availableMode,source==='measured');return leg?{...leg,minutes:adjustedMinutes(leg.minutes*60,answers)}:null;})();
   const original=route(answers.currentNodeId,answers.finalNodeId);
   if(!original) return [];
   const done=completedIds(history);
@@ -93,9 +96,10 @@ export function recommend(answers:Answers,history:HistoryState|null,routed?:Rout
     const toNode=route(answers.currentNodeId,node.id);
     const toFinal=route(node.id,answers.finalNodeId);
     if(!toNode||!toFinal) continue;
-    const estimated=provisionalNodeIds.has(node.id);
-    const margin=routed?5:estimated?5:0;
-    const via=toNode.minutes+(knownAction.minStay as number)+toFinal.minutes+margin;
+    const margin=WALKING_MODEL.safetyMinutes;
+    const walking=toNode.minutes+toFinal.minutes;
+    if(answers.maxWalkMin!==null&&walking>answers.maxWalkMin)continue;
+    const via=walking+(knownAction.minStay as number)+margin;
     if(via>answers.remainingTimeMin) continue;
     const viaDistance=toNode.distance===null||toFinal.distance===null?null:toNode.distance+toFinal.distance;
     const additionalDistance=original.distance===null||viaDistance===null?null:Math.max(0,viaDistance-original.distance);
@@ -103,12 +107,13 @@ export function recommend(answers:Answers,history:HistoryState|null,routed?:Rout
     out.push({
       id:node.id+'-'+knownAction.id,nodeId:node.id,nodeName:node.name,actionId:knownAction.id,actionName:knownAction.type,layer,
       originalRouteMinutes:original.minutes,viaRouteMinutes:via,detourMinutes:Math.max(0,via-original.minutes),
+      walkingMinutes:walking,additionalWalkingMinutes:Math.max(0,walking-original.minutes),experienceMinutes:knownAction.minStay as number,safetyBufferMinutes:margin,
       originalDistanceM:original.distance,viaDistanceM:viaDistance,additionalDistanceM:additionalDistance,
       matchingTags:matches.map(t=>tagNames[t]||t),
       reason:layer==='L1'
         ?'選んだテーマに合い、現在のV4データで時間成立を判定できる候補です。'
         :'明示テーマを置き換えず、発見枠として追加できる候補です。',
-      dataStatus:routed?'地図経路APIによる徒歩推定に歩行ペース・天候補正と余裕5分を加算。滞在時間は一部仮設定です。':estimated?'徒歩時間・滞在時間ともに机上の概算です。安全余裕5分を含みます。現地検証前のDemo表示です。':'検索ベースの仮値を含みます。実証後に更新予定。'
+      dataStatus:source==='maps'?'Google Maps の徒歩推定に歩行ペース・天候補正と余裕5分を加算。地点の入口・座標は未検証、滞在時間は一部仮設定です。':source==='measured'?'現地実測の区間に歩行ペース・天候補正と余裕5分を加算。個人差があり、滞在時間は一部仮設定です。':'徒歩時間・滞在時間は机上の概算です。安全余裕5分を含む現地未検証のDemo表示です。'
     });
   }
   out.sort((a,b)=>{
@@ -171,8 +176,8 @@ export const knownActionCount=actions.filter(a=>typeof a.minStay==='number'&&(a.
 export function routingCandidateIds(a:Answers,h:HistoryState|null):string[]{
  const done=completedIds(h);
  return nodes.filter(n=>(n.type==='poi'||n.type==='area') && n.id!==a.currentNodeId && n.id!==a.finalNodeId && (n.status==='ACTIVE'||provisionalNodeIds.has(n.id)) && n.modes.includes('徒歩') && (n.publicStatus.includes('公開')||provisionalNodeIds.has(n.id)))
- .filter(n=>[...actionsForNode(n.id),...provisionalActions.filter(x=>x.nodeId===n.id)].some(x=>typeof x.minStay==='number'&&!done.has(x.id)&&['KNOWN','仮設定','概算Demo'].includes(x.timeStatus)))
+ .filter(n=>[...actionsForNode(n.id),...provisionalActions.filter(x=>x.nodeId===n.id)].some(x=>typeof x.minStay==='number'&&x.minStay+WALKING_MODEL.safetyMinutes<=a.remainingTimeMin&&!done.has(x.id)&&['KNOWN','仮設定','概算Demo'].includes(x.timeStatus)&&actionSupportsExplicitTheme(x.type,a.interestTagIds)))
  .filter(n=>{const tags=matchingTags(n.id,a.interestTagIds);return tags.length>0||a.discoveryOptIn&&a.detourPreference!=='最短';})
  .sort((x,y)=>matchingTags(y.id,a.interestTagIds).length-matchingTags(x.id,a.interestTagIds).length)
- .slice(0,18).map(n=>n.id);
+ .slice(0,8).map(n=>n.id);
 }

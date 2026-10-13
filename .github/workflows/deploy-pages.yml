@@ -25,9 +25,12 @@ jobs:
         with:
           node-version: 22
       - name: Install dependencies
-        run: npm install
+        run: npm ci
       - name: Build
-        run: npm run build
+        env:
+          VITE_WALKING_ROUTE_ENDPOINT: ${{ vars.VITE_WALKING_ROUTE_ENDPOINT }}
+          VITE_HIKONE_AI_ENDPOINT: ${{ vars.VITE_HIKONE_AI_ENDPOINT }}
+        run: npm run build:pages
       - name: Setup Pages
         uses: actions/configure-pages@v5
         with:

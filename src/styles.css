@@ -20,3 +20,4 @@
 .gps-button{margin-top:16px;text-align:center}.gps-notice{background:#edf4ee;color:#243f30;border:1px solid #d2e2d4;border-radius:12px;padding:11px 13px;font-size:13px;line-height:1.65}.gps-error{color:#903b31;font-size:13px}
 
 .story-source{display:block;color:#53675c;font-size:12px;text-decoration:underline;text-underline-offset:3px;padding:11px 16px;line-height:1.5;background:#faf9f6}.story-source:hover{color:#263b32}.catalog-item .story-source{padding:8px 0 10px;background:transparent}
+.maps-attribution{font-family:Roboto,sans-serif;font-size:14px;font-weight:400;color:#1f1f1f;white-space:nowrap;letter-spacing:normal}

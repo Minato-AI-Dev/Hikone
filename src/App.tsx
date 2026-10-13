@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { actions, nodeById, tagNames } from './data/dbV4';
 import { Answers, HistoryState, Recommendation, ResearchCandidate } from './types';
 import { addValidation, completeExperience, lastCompletedId, loadHistory, startExperience } from './lib/history';
@@ -27,7 +27,10 @@ function getGps():Promise<GPSPosition>{
 export default function App(){
  const [history,setHistory]=useState<HistoryState|null>(()=>loadHistory());
  const [analyticsConsent,setConsent]=useState<boolean>(()=>hasAnalyticsConsent());
- const [screen,setScreen]=useState<Screen>('home');
+ const [screen,setScreenState]=useState<Screen>('home');
+ const pendingRoute=useRef<AbortController|null>(null);
+ const setScreen=(next:Screen)=>{if(next!=='results')pendingRoute.current?.abort();setScreenState(next)};
+ useEffect(()=>()=>pendingRoute.current?.abort(),[]);
  const [step,setStep]=useState(0);
  const [answers,setAnswers]=useState<Answers>(defaultAnswers);
  const [recs,setRecs]=useState<Recommendation[]>([]);
@@ -42,6 +45,7 @@ export default function App(){
  const [gpsError,setGpsError]=useState('');
  const [routingBusy,setRoutingBusy]=useState(false);
  const [routingNotice,setRoutingNotice]=useState('');
+ const [routingSource,setRoutingSource]=useState('unavailable');
  const requestGps=async()=>{
   setGpsBusy(true);setGpsError('');
   try{
@@ -59,10 +63,12 @@ export default function App(){
  const finalName=nodeById(answers.finalNodeId)?.name||answers.finalNodeId;
 
  const run=async(a=answers,h=history)=>{
-   setRoutingBusy(true);setRoutingNotice('徒歩経路を計算しています…');setScreen('results');
-   const result=await autoRecommend(a,h);
+   pendingRoute.current?.abort();const controller=new AbortController();pendingRoute.current=controller;
+   setRecs([]);setRoutingBusy(true);setRoutingNotice('徒歩経路を計算しています…');setScreen('results');
+   const result=await autoRecommend(a,h,undefined,controller.signal);if(controller.signal.aborted)return;
    const r=result.recommendations;
    setRoutingNotice(result.warning);
+   setRoutingSource(result.source);
    setRoutingBusy(false);
    setRecs(r);
    setResearch(debugMode?researchCandidates(a):[]);
@@ -92,7 +98,7 @@ export default function App(){
     <button className="primary" onClick={beginQuestions}>選択肢から探す<span>5回ほどタップするだけです。</span></button>
     <button className="secondary" onClick={()=>setScreen('catalog')}>彦根の行き先一覧を見る<span>歴史・ひこにゃん・写真・食などから探せます。</span></button>
     <button className="secondary ai-entry" onClick={beginAI}>自由入力で相談する<span>細かい希望があるときはこちら。</span></button>
-    <p className="note">徒歩経路は利用可能な場合は地図経路APIで自動計算します。未設定時は未実測の仮値によるデモ表示となります。</p>
+    <p className="note">徒歩時間は推定です。経路を取得できず実測区間もない場合、時間内に行ける候補は表示できません。</p>
     <label className="catalog-check"><input type="checkbox" checked={analyticsConsent} onChange={e=>{setConsent(e.target.checked);setAnalyticsConsent(e.target.checked);track('analytics_consent_changed',{enabled:e.target.checked})}}/> 実証調査に協力する（利用状況をこの端末に記録）</label>
     <p className="note">位置情報や自由入力の本文は記録しません。記録はこの端末内に保存され、送信されません。</p>
     {analyticsConsent&&<button className="secondary" onClick={downloadAnalytics}>調査ログをCSVで保存する</button>}
@@ -101,8 +107,8 @@ export default function App(){
 
    {screen==='catalog'&&<DestinationCatalog onBack={()=>setScreen('home')}/>}
 
-   {screen==='ai'&&<HikoneAI answers={answers} history={history} onBack={()=>setScreen('home')} onResolved={(a,r,intro,source)=>{
-     setAnswers(a);setRecs(r);setResearch(debugMode?researchCandidates(a):[]);setAiIntro(intro);setAiSource(source);setScreen('results');
+   {screen==='ai'&&<HikoneAI answers={answers} history={history} onBack={()=>setScreen('home')} onResolved={(a,r,intro,source,routing)=>{
+     setAnswers(a);setRecs(r);setResearch(debugMode?researchCandidates(a):[]);setAiIntro(intro);setAiSource(source);setRoutingNotice(routing.warning);setRoutingSource(routing.source);setRoutingBusy(false);setScreen('results');
    }}/>}
 
    {screen==='questions'&&<Questionnaire step={step} setStep={setStep} answers={answers} setAnswers={setAnswers} gps={gps} gpsBusy={gpsBusy} gpsError={gpsError} requestGps={requestGps} onDone={()=>{track('questionnaire_completed');run(answers)}}/>}
@@ -110,12 +116,14 @@ export default function App(){
    {screen==='results'&&<section>
     <p className="eyebrow">今から行けるところ</p>
     <h2>{routingBusy?'徒歩経路を確認中…':recs.length?'このあたりがおすすめです':'今の条件では、寄り道なしが安心です'}</h2>
-    {routingNotice&&<p className="note">{routingNotice}</p>}
+    {routingNotice&&<p className="note" role="status">{routingNotice}</p>}
+    {!routingBusy&&routingSource==='maps'&&<p className="maps-attribution" translate="no">Google Maps</p>}
     {aiIntro&&<div className="ai-summary"><p>{aiIntro}</p></div>}
     {gps&&<p className="gps-notice">Google Mapsの出発点には取得した現在地を使います。下の所要時間は選択した出発地点（{shortName(currentName)}）を基準とした参考値です。</p>}
     <div className="route-context"><b>{shortName(currentName)}</b><span>→</span><b>{shortName(finalName)}</b><small>残り {answers.remainingTimeMin}分</small></div>
+    <p className="note">歩行ペース：{answers.walkingPace==='slow'?'休憩しながら':answers.walkingPace==='relaxed'?'ゆっくり':'普通'} ／ 状況：{answers.walkingConditions==='rain'?'雨・足元が悪い':answers.walkingConditions==='heat'?'暑い・疲れやすい':'通常'}{answers.maxWalkMin!==null?' ／ 徒歩は合計'+answers.maxWalkMin+'分まで':''}。読み取りが違う場合は条件を変更してください。</p>
     {answers.interestTagIds.length>0&&<div className="selected-tags">{friendlySelectedTags(answers.interestTagIds).map(t=><span key={t}>{t}</span>)}</div>}
-    {!routingBusy&&!recs.length&&<div className="strict-empty"><b>今回は無理に寄り道をおすすめしません。</b><p>出発地・帰着地の移動時間が未登録の可能性もあります。特に駐車場からのルートは現地計測が完了するまで推薦できません。場所や残り時間を変えてお試しください。</p></div>}
+    {!routingBusy&&!recs.length&&<div className="strict-empty"><b>今回は無理に寄り道をおすすめしません。</b><p>残り時間が足りないか、必要な徒歩経路を取得できませんでした。帰る場所までの経路をGoogle Mapsで確認し、余裕を持って移動してください。</p></div>}
     <div className="cards">{recs.map(r=><div key={r.id} className="result-card">
       <button className="exp-card strategy-card" onClick={()=>selectRec(r)}>
         <div className="strategy-head"><span className="pill">{r.matchingTags.length?'あなた向け':'ちょっと発見'}</span><span className="detour-badge">+{r.detourMinutes}分</span></div>
@@ -126,6 +134,7 @@ export default function App(){
         <p className="reason">{friendlyReason(r)}</p>
         {r.reason&&<p className="match-line">{r.reason}</p>}
         <small>{shortName(finalName)}まで含めて 約{r.viaRouteMinutes}分{r.additionalDistanceM!==null?' / 追加約'+r.additionalDistanceM+'m':''}</small>
+        <small>徒歩約{r.walkingMinutes}分（追加歩行約{r.additionalWalkingMinutes}分）・体験{r.experienceMinutes}分・余裕{r.safetyBufferMinutes}分</small>
       </button>
       {visitorStory(r.nodeId,nodeById(r.nodeId)?.category||'').source&&<a className="story-source" href={visitorStory(r.nodeId,nodeById(r.nodeId)?.category||'').source} target="_blank" rel="noopener noreferrer">このお話の参考資料を見る ↗</a>}
       <a className="result-map-link" href={googleMapsDirectionsUrl(gps?gps.lat+','+gps.lng:currentName,r.nodeName,finalName)} target="_blank" rel="noopener noreferrer" onClick={()=>track('navigation_clicked',{id:r.actionId,from:'results'})}>
@@ -150,10 +159,13 @@ export default function App(){
     <div className="breakdown">
       <div><b>{shortName(finalName)}へ直行</b><span>約{selected.originalRouteMinutes}分</span></div>
       <div><b>この寄り道をする</b><span>約{selected.viaRouteMinutes}分</span></div>
+      <div><b>追加で歩く時間</b><span>約{selected.additionalWalkingMinutes}分</span></div>
+      <div><b>体験と計画の余裕</b><span>{selected.experienceMinutes}分＋{selected.safetyBufferMinutes}分</span></div>
       {selected.additionalDistanceM!==null&&<div><b>追加で歩く距離</b><span>約{selected.additionalDistanceM}m</span></div>}
     </div>
     <p className="route-result">帰る場所はそのまま。寄り道で <b>+{selected.detourMinutes}分</b> です。</p>
-    <p className="note">{selected.dataStatus.includes('机上の概算')?'この経路時間・滞在時間は現地未検証の概算です。移動前にGoogle Mapsで経路と余裕を確認してください。':'所要時間は目安です。現地の状況により変わることがあります。'}</p>
+    <p className="note">{selected.dataStatus}</p>
+    {selected.dataStatus.includes('Google Maps')&&<p className="maps-attribution" translate="no">Google Maps</p>}
     {debugMode&&<div className="debug-box"><b>Debug</b><p>{selected.dataStatus}</p><p>ID: {selected.id} / Layer: {selected.layer}</p></div>}
     <button className="primary" onClick={beginExperience}>ここに寄る</button>
     <button className="link" onClick={()=>setScreen('results')}>別の候補を見る</button>
@@ -186,6 +198,7 @@ export default function App(){
 
    {screen==='history'&&<section><p className="eyebrow">これまでの彦根</p><h2>寄り道の記録</h2><p>この端末で寄り道した記録を保存しています。</p><button className="link" onClick={()=>setScreen('home')}>戻る</button></section>}
   </main>
+  <footer className="note"><a href={import.meta.env.BASE_URL+'privacy.html'} target="_blank" rel="noopener noreferrer">プライバシー</a> · <a href={import.meta.env.BASE_URL+'terms.html'} target="_blank" rel="noopener noreferrer">利用規約</a></footer>
   <nav><button onClick={()=>setScreen('home')}>ホーム</button><button onClick={beginQuestions}>寄り道を探す</button><button onClick={()=>setScreen('history')}>履歴</button></nav>
  </div>
 }
@@ -204,7 +217,7 @@ function Questionnaire({step,setStep,answers,setAnswers,gps,gpsBusy,gpsError,req
   {q:'あとどのくらい時間がありますか？',body:<Choice value={answers.remainingTimeMin} setValue={v=>setAnswers({...answers,remainingTimeMin:Number(v)})} options={[[20,'20分'],[35,'35分'],[60,'60分'],[90,'90分以上']]}/>},
   {q:'今、何がしたいですか？',body:<InterestChoices values={answers.interestTagIds} setValues={v=>setAnswers({...answers,interestTagIds:v})}/>},
   {q:'寄り道はどのくらいならOK？',body:<Choice value={answers.detourPreference} setValue={v=>{const x=String(v) as Answers['detourPreference'];setAnswers({...answers,detourPreference:x,discoveryOptIn:x!=='最短'})}} options={[['最短','なるべく寄り道しない'],['少しなら','少しならOK'],['積極','せっかくなので寄りたい']]}/>} ,
-  {q:'歩く速さ・今日の状況は？',body:<><p>歩く速さ</p><Choice value={answers.walkingPace||'standard'} setValue={v=>setAnswers({...answers,walkingPace:v})} options={[['standard','普通'],['relaxed','ゆっくり'],['slow','休憩しながら']]}/><p>天候など</p><Choice value={answers.walkingConditions||'normal'} setValue={v=>setAnswers({...answers,walkingConditions:v})} options={[['normal','通常'],['rain','雨・足元が悪い'],['heat','暑い・疲れやすい']]}/><p className="note">補正は暫定的な安全目安です。個々の体力を正確に推定するものではありません。</p></>}
+  {q:'歩く速さ・今日の状況は？',body:<><p>歩く速さ</p><Choice value={answers.walkingPace||'standard'} setValue={v=>setAnswers({...answers,walkingPace:v})} options={[['standard','普通'],['relaxed','ゆっくり'],['slow','休憩しながら']]}/><p>天候など</p><Choice value={answers.walkingConditions||'normal'} setValue={v=>setAnswers({...answers,walkingConditions:v})} options={[['normal','通常'],['rain','雨・足元が悪い'],['heat','暑い・疲れやすい']]}/><p>歩く時間の合計上限</p><Choice value={answers.maxWalkMin} setValue={v=>setAnswers({...answers,maxWalkMin:v})} options={[[null,'上限なし'],[15,'15分まで'],[30,'30分まで'],[60,'60分まで'],...(answers.maxWalkMin!==null&&![15,30,60].includes(answers.maxWalkMin)?[[answers.maxWalkMin,answers.maxWalkMin+'分まで（入力値）']]:[])]}/><p className="note">補正は暫定的な安全目安です。個々の体力を正確に推定するものではありません。</p></>}
  ];
  return <section>
   <div className="progress"><span style={{width:String(((step+1)/qs.length)*100)+'%'}}/></div>
