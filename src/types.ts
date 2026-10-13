@@ -27,6 +27,10 @@ export type Recommendation={
   originalRouteMinutes:number;
   viaRouteMinutes:number;
   detourMinutes:number;
+  walkingMinutes:number;
+  additionalWalkingMinutes:number;
+  experienceMinutes:number;
+  safetyBufferMinutes:number;
   originalDistanceM:number|null;
   viaDistanceM:number|null;
   additionalDistanceM:number|null;

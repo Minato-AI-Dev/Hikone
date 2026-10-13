@@ -1,35 +1,42 @@
 import type { Answers, HistoryState } from '../types';
 import { nodeById } from '../data/dbV4';
-import { recommend, routingCandidateIds, type RoutedLegs, type Route } from './recommend';
+import { recommend, routingCandidateIds, type RoutedLegs } from './recommend';
+import { adjustedMinutes } from './walkingModel';
 
-const endpoint=import.meta.env.VITE_WALKING_ROUTE_ENDPOINT||'/api/walking-routes';
-const paceFactor={standard:1,relaxed:1.2,slow:1.45};
-const conditionFactor={normal:1,rain:1.15,heat:1.25};
-export type AutoRouteResult={recommendations:ReturnType<typeof recommend>;source:'maps'|'offline';warning:string};
-export async function autoRecommend(answers:Answers,history:HistoryState|null,originGps?:{lat:number;lng:number}|null):Promise<AutoRouteResult>{
- const fallback=()=>({recommendations:recommend(answers,history),source:'offline' as const,warning:'経路APIを利用できないため、未実測の仮時間を使用しています。駐車場発着など計算できない場所は表示されません。'});
- const candidates=routingCandidateIds(answers,history);
- const start=nodeById(answers.currentNodeId),end=nodeById(answers.finalNodeId);
- if(!start||!end||!candidates.length)return fallback();
- const names:Record<string,string>={};
- for(const n of [start,end,...candidates.map(id=>nodeById(id)).filter((n):n is NonNullable<typeof n>=>Boolean(n))]){
-   names[n.id]=n.name+' 滋賀県彦根市';
- }
- // GPS is not sent without an explicit location consent; selected nodes remain the ETA reference.
- const pairs=[{from:start.id,to:end.id},...candidates.flatMap(id=>[{from:start.id,to:id},{from:id,to:end.id}])];
- try{
-  const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pairs,names})});
-  if(!response.ok)throw new Error('Routing not configured');
-  const data=await response.json() as {legs:Record<string,{seconds:number;meters:number}>};
-  if(!data.legs||!data.legs[start.id+'>'+end.id])throw new Error('No direct route');
-  const factor=paceFactor[answers.walkingPace||'standard']*conditionFactor[answers.walkingConditions||'normal'];
-  const routed:RoutedLegs={};
-  for(const [key,leg] of Object.entries(data.legs)){
-    if(!Number.isFinite(leg.seconds)||!Number.isFinite(leg.meters))continue;
-    const minutes=Math.ceil(leg.seconds/60*factor);
-    const route:Route={minutes,distance:Math.round(leg.meters)};
-    routed[key]=route;
-  }
-  return {recommendations:recommend(answers,history,routed),source:'maps',warning:'地図経路を基準に歩行ペース・天候の目安を補正。信号待ち・疲労・混雑・施設滞在は状況により変化します。'};
- }catch{return fallback();}
+export type AutoRouteResult={recommendations:ReturnType<typeof recommend>;source:'maps'|'measured'|'demo'|'unavailable';warning:string};
+export async function autoRecommend(answers:Answers,history:HistoryState|null,_originGps?:{lat:number;lng:number}|null,signal?:AbortSignal):Promise<AutoRouteResult> {
+  const fallback=(message:string):AutoRouteResult=>{
+    const demo=import.meta.env.VITE_ROUTING_DEMO==='true';
+    const recommendations=recommend(answers,history,undefined,demo?'demo':'measured');
+    return {recommendations,source:demo?'demo':recommendations.length?'measured':'unavailable',warning:message+(demo?' 以下は現地未検証のデモです。移動前にGoogle Mapsで確認してください。':recommendations.length?' 現地実測の区間を基準とした目安を表示します。':' 信頼できる徒歩時間が揃わないため、時間内に行ける候補は表示できません。Google Mapsで確認してください。')};
+  };
+  if(!nodeById(answers.currentNodeId)||!nodeById(answers.finalNodeId)||!Number.isFinite(answers.remainingTimeMin)||answers.remainingTimeMin<0)
+    return {recommendations:[],source:'unavailable',warning:'出発地・帰着地・残り時間を確認してください。'};
+  const candidates=routingCandidateIds(answers,history);
+  if(!candidates.length)return {recommendations:[],source:'unavailable',warning:'現在の条件に合う候補がありません。'};
+  const endpoint=import.meta.env.VITE_WALKING_ROUTE_ENDPOINT?.trim() || (import.meta.env.DEV?'/api/walking-routes':'');
+  if(!endpoint)return fallback('徒歩経路サービスが未設定です。');
+  const pairs=[{from:answers.currentNodeId,to:answers.finalNodeId},...candidates.flatMap(id=>[{from:answers.currentNodeId,to:id},{from:id,to:answers.finalNodeId}])].filter(p=>p.from!==p.to);
+  const unique=[...new Map(pairs.map(p=>[p.from+'>'+p.to,p])).values()];
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),25000);
+  const cancel=()=>controller.abort();signal?.addEventListener('abort',cancel,{once:true});if(signal?.aborted)cancel();
+  try {
+    // Send only repository IDs. GPS and client-provided addresses are never included.
+    const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pairs:unique}),signal:controller.signal});
+    if(!response.ok)throw new Error('Routing unavailable');
+    const data=await response.json();
+    if(!data||typeof data.legs!=='object'||!data.legs||Array.isArray(data.legs))throw new Error('Invalid routes');
+    const routed:RoutedLegs={};
+    for(const p of unique) {
+      const key=p.from+'>'+p.to,leg=data.legs[key];
+      if(!leg||typeof leg.seconds!=='number'||typeof leg.meters!=='number'||!Number.isFinite(leg.seconds)||!Number.isFinite(leg.meters)||leg.seconds<=0||leg.meters<=0||leg.seconds>86400||leg.meters>100000)continue;
+      routed[key]={minutes:adjustedMinutes(leg.seconds,answers),distance:Math.round(leg.meters)};
+    }
+    if(answers.currentNodeId!==answers.finalNodeId&&!routed[answers.currentNodeId+'>'+answers.finalNodeId])throw new Error('Missing direct route');
+    const partial=Object.keys(routed).length<unique.length;
+    return {recommendations:recommend(answers,history,routed),source:'maps',warning:'Google Maps の徒歩推定を歩行ペース・天候で補正し、計画の余裕5分を加えています。地点の入口・座標と一部の滞在時間は未検証です。'+(partial?' 一部の経路を取得できず、候補を省略しました。':'')};
+  } catch {
+    if(signal?.aborted)return {recommendations:[],source:'unavailable',warning:''};
+    return fallback('現在、徒歩経路を取得できません。');
+  } finally {clearTimeout(timer);signal?.removeEventListener('abort',cancel);}
 }

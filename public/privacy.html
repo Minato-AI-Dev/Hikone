@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>プライバシー | 次の彦根</title></head>
+<body><main><h1>プライバシーについて</h1><p>更新日：2026年10月13日</p>
+<p>このサービスは、選択した出発地・帰着地と希望をもとに彦根の寄り道を提案します。</p>
+<h2>経路と位置情報</h2><p>選択した地点のIDを運営するAPIへ送信します。APIは対応する地名をGoogle Maps Platformへ送信して徒歩経路を取得します。端末のGPS座標はこの経路APIに送信しません。位置情報の取得は任意で、Google Mapsの道案内を開く際の出発点に使います。地図を表示・開くとGoogleに通信します。</p>
+<h2>自由入力</h2><p>クラウドAIが設定されている場合、入力文と推薦候補を運営API経由でOpenAIへ送信します。個人情報を入力しないでください。クラウドAIが未設定・利用不能の場合は端末内のルールで希望を読み取ります。</p>
+<h2>端末内の記録</h2><p>体験履歴と希望は端末のlocalStorageに保存します。実証調査ログは同意した場合だけ同じ端末に記録し、自由入力の本文やGPS座標は記録しません。調査への同意を解除すると調査ログを削除します。CSVは利用者の操作で保存され、自動送信されません。端末履歴はブラウザのサイトデータを削除して消去できます。</p>
+<h2>APIの保護と配信事業者</h2><p>APIは不正利用・過度な課金を防ぐため、Vercelが提供する接続元IPからハッシュを作り、共有レート制限ストアに短時間保存します。生のIP・GPS座標・自由入力をこのストアには保存しません。配信事業者は通常の通信ログを扱うことがあります。</p>
+<p>Google Mapsの利用には<a href="https://policies.google.com/privacy">Googleプライバシーポリシー</a>が適用されます。その他の事業者については<a href="https://vercel.com/legal/privacy-policy">Vercel</a>、<a href="https://upstash.com/trust">Upstash</a>、<a href="https://openai.com/policies/privacy-policy/">OpenAI</a>をご確認ください。</p>
+<p>運営・お問い合わせ：<a href="https://github.com/Minato-AI-Dev/Hikone/issues">Minato-AI-Dev / Hikone</a>。公開Issueには個人情報を記載しないでください。</p>
+</main></body></html>
