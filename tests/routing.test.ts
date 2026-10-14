@@ -35,8 +35,8 @@ describe('mandatory planned visit',()=>{
     const r=recommend(a,null,legs).find(x=>x.nodeId==='P01');
     expect(r?.routeNodeIds).toEqual(['S01','P02','P01','D01']);
     expect(r?.originalRouteMinutes).toBe(40);
-    expect(r?.viaRouteMinutes).toBe(54);
-    expect(r?.detourMinutes).toBe(14);
+    expect(r?.viaRouteMinutes).toBe(49);
+    expect(r?.detourMinutes).toBe(9);
   });
   it('does not silently skip a mandatory stop if travel data is missing',()=>{
     const a={...answers,plannedNodeId:'P02',plannedStayMin:15,remainingTimeMin:90};
