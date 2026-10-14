@@ -4,6 +4,8 @@ export type AnalyticsEvent =
   | 'questionnaire_started'
   | 'questionnaire_completed'
   | 'itinerary_recorded'
+  | 'visit_candidate_detected'
+  | 'visit_reviewed'
   | 'recommendation_viewed'
   | 'recommendation_selected'
   | 'experience_started'
