@@ -70,13 +70,24 @@ export function recommend(answers:Answers,history:HistoryState|null,routed?:Rout
   const route=(a:string,b:string)=>routed
     ? (a===b?{minutes:0,distance:0}:routed[legKey(a,b)]||null)
     : (()=>{const leg=shortest(a,b,answers.availableMode,source==='measured');return leg?{...leg,minutes:adjustedMinutes(leg.minutes*60,answers)}:null;})();
-  const original=route(answers.currentNodeId,answers.finalNodeId);
-  if(!original) return [];
+  const planned=answers.plannedNodeId;
+  if(planned&&(!nodeById(planned)||[answers.currentNodeId,answers.finalNodeId].includes(planned)||
+    !Number.isFinite(answers.plannedStayMin)||Number(answers.plannedStayMin)<0))return [];
+  const baseline=[answers.currentNodeId,...(planned?[planned]:[]),answers.finalNodeId];
+  const sum=(ids:string[])=>{
+    const legs=ids.slice(1).map((to,i)=>route(ids[i],to));
+    if(legs.some(l=>!l))return null;
+    return {minutes:legs.reduce((v,l)=>v+l!.minutes,0),
+      distance:legs.some(l=>l!.distance===null)?null:legs.reduce((v,l)=>v+l!.distance!,0)};
+  };
+  const original=sum(baseline);
+  if(!original)return [];
+  const plannedStay=planned?Number(answers.plannedStayMin):0;
   const done=completedIds(history);
   const out:Recommendation[]=[];
   for(const node of nodes){
     if(node.type!=='poi'&&node.type!=='area') continue;
-    if(node.id===answers.currentNodeId||node.id===answers.finalNodeId) continue;
+    if(baseline.includes(node.id)) continue;
     if(node.status!=='ACTIVE'&&!provisionalNodeIds.has(node.id)) continue;
     if(!node.modes.includes(answers.availableMode)) continue;
     if(!node.publicStatus.includes('公開')&&!provisionalNodeIds.has(node.id)) continue;
@@ -93,21 +104,22 @@ export function recommend(answers:Answers,history:HistoryState|null,routed?:Rout
     if(layer==='L2'&&(!answers.discoveryOptIn||answers.detourPreference==='最短')) continue;
     if(layer==='L1'&&!actionSupportsExplicitTheme(knownAction.type,answers.interestTagIds)) continue;
 
-    const toNode=route(answers.currentNodeId,node.id);
-    const toFinal=route(node.id,answers.finalNodeId);
-    if(!toNode||!toFinal) continue;
-    const margin=WALKING_MODEL.safetyMinutes;
-    const walking=toNode.minutes+toFinal.minutes;
+    const positions=baseline.slice(1).map((_,i)=>[...baseline.slice(0,i+1),node.id,...baseline.slice(i+1)]);
+    const valid=positions.map(ids=>({ids,leg:sum(ids)})).filter(x=>x.leg!==null)
+      .sort((x,y)=>x.leg!.minutes-y.leg!.minutes);
+    const chosen=valid[0];
+    if(!chosen)continue;
+    const walking=chosen.leg!.minutes,margin=WALKING_MODEL.safetyMinutes;
     if(answers.maxWalkMin!==null&&walking>answers.maxWalkMin)continue;
-    const via=walking+(knownAction.minStay as number)+margin;
-    if(via>answers.remainingTimeMin) continue;
-    const viaDistance=toNode.distance===null||toFinal.distance===null?null:toNode.distance+toFinal.distance;
+    const via=walking+plannedStay+(knownAction.minStay as number)+margin;
+    if(via>answers.remainingTimeMin)continue;
+    const viaDistance=chosen.leg!.distance;
     const additionalDistance=original.distance===null||viaDistance===null?null:Math.max(0,viaDistance-original.distance);
     const matches=matchingTags(node.id,answers.interestTagIds);
     out.push({
       id:node.id+'-'+knownAction.id,nodeId:node.id,nodeName:node.name,actionId:knownAction.id,actionName:knownAction.type,layer,
-      originalRouteMinutes:original.minutes,viaRouteMinutes:via,detourMinutes:Math.max(0,via-original.minutes),
-      walkingMinutes:walking,additionalWalkingMinutes:Math.max(0,walking-original.minutes),experienceMinutes:knownAction.minStay as number,safetyBufferMinutes:margin,
+      originalRouteMinutes:original.minutes+plannedStay,viaRouteMinutes:via,detourMinutes:Math.max(0,via-original.minutes-plannedStay),
+      walkingMinutes:walking,additionalWalkingMinutes:Math.max(0,walking-original.minutes),experienceMinutes:(knownAction.minStay as number)+plannedStay,safetyBufferMinutes:margin,routeNodeIds:chosen.ids,
       originalDistanceM:original.distance,viaDistanceM:viaDistance,additionalDistanceM:additionalDistance,
       matchingTags:matches.map(t=>tagNames[t]||t),
       reason:layer==='L1'
@@ -175,7 +187,7 @@ export const knownActionCount=actions.filter(a=>typeof a.minStay==='number'&&(a.
 // The same eligibility screen used for the API-powered and offline recommendations.
 export function routingCandidateIds(a:Answers,h:HistoryState|null):string[]{
  const done=completedIds(h);
- return nodes.filter(n=>(n.type==='poi'||n.type==='area') && n.id!==a.currentNodeId && n.id!==a.finalNodeId && (n.status==='ACTIVE'||provisionalNodeIds.has(n.id)) && n.modes.includes('徒歩') && (n.publicStatus.includes('公開')||provisionalNodeIds.has(n.id)))
+ return nodes.filter(n=>(n.type==='poi'||n.type==='area') && n.id!==a.currentNodeId && n.id!==a.finalNodeId && n.id!==a.plannedNodeId && (n.status==='ACTIVE'||provisionalNodeIds.has(n.id)) && n.modes.includes('徒歩') && (n.publicStatus.includes('公開')||provisionalNodeIds.has(n.id)))
  .filter(n=>[...actionsForNode(n.id),...provisionalActions.filter(x=>x.nodeId===n.id)].some(x=>typeof x.minStay==='number'&&x.minStay+WALKING_MODEL.safetyMinutes<=a.remainingTimeMin&&!done.has(x.id)&&['KNOWN','仮設定','概算Demo'].includes(x.timeStatus)&&actionSupportsExplicitTheme(x.type,a.interestTagIds)))
  .filter(n=>{const tags=matchingTags(n.id,a.interestTagIds);return tags.length>0||a.discoveryOptIn&&a.detourPreference!=='最短';})
  .sort((x,y)=>matchingTags(y.id,a.interestTagIds).length-matchingTags(x.id,a.interestTagIds).length)

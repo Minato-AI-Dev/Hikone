@@ -2,6 +2,8 @@ export type DetourPreference='最短'|'少しなら'|'積極';
 export type Answers={
   currentNodeId:string;
   finalNodeId:string;
+  plannedNodeId?:string;
+  plannedStayMin?:number;
   remainingTimeMin:number;
   interestTagIds:string[];
   availableMode:'徒歩';
@@ -37,6 +39,7 @@ export type Recommendation={
   matchingTags:string[];
   reason:string;
   dataStatus:string;
+  routeNodeIds?:string[];
 };
 export type ResearchCandidate={
   nodeId:string; nodeName:string; status:string; category:string; matchingTags:string[];

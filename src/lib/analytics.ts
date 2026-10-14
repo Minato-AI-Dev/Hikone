@@ -3,6 +3,7 @@ export type AnalyticsEvent =
   | 'app_open'
   | 'questionnaire_started'
   | 'questionnaire_completed'
+  | 'itinerary_recorded'
   | 'recommendation_viewed'
   | 'recommendation_selected'
   | 'experience_started'
@@ -21,7 +22,7 @@ export type AnalyticsEvent =
 
 const STORAGE_KEY = 'hikone-field-events-v1';
 const CONSENT_KEY = 'hikone-field-consent-v1';
-const ALLOWED_KEYS = new Set(['count','id','detourMinutes','currentNodeId','finalNodeId','from','method','source','enabled']);
+const ALLOWED_KEYS = new Set(['count','id','detourMinutes','currentNodeId','finalNodeId','plannedNodeId','plannedStayMin','from','method','source','enabled']);
 type LogRow = {timestamp:string;event:AnalyticsEvent;details:Record<string,string|number|boolean>};
 export function hasAnalyticsConsent():boolean {
   try { return localStorage.getItem(CONSENT_KEY)==='yes'; } catch { return false; }

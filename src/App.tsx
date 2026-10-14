@@ -10,7 +10,7 @@ import { visitorStory } from './data/visitorStories';
 import { autoRecommend } from './lib/walkingRoutes';
 
 type Screen='home'|'ai'|'questions'|'results'|'detail'|'go'|'done'|'history'|'catalog';
-const defaultAnswers:Answers={currentNodeId:'S01',finalNodeId:'D01',remainingTimeMin:35,interestTagIds:[],availableMode:'徒歩',maxWalkMin:null,detourPreference:'少しなら',discoveryOptIn:true,firstVisit:true,walkingPace:'standard',walkingConditions:'normal'};
+const defaultAnswers:Answers={currentNodeId:'S01',finalNodeId:'D01',plannedNodeId:'',plannedStayMin:15,remainingTimeMin:35,interestTagIds:[],availableMode:'徒歩',maxWalkMin:null,detourPreference:'少しなら',discoveryOptIn:true,firstVisit:true,walkingPace:'standard',walkingConditions:'normal'};
 const debugMode=new URLSearchParams(window.location.search).get('debug')==='1';
 type GPSPosition={lat:number;lng:number;accuracy:number};
 function getGps():Promise<GPSPosition>{
@@ -61,6 +61,7 @@ export default function App(){
  const last=useMemo(()=>actions.find(a=>a.id===lastCompletedId(history)),[history]);
  const currentName=nodeById(answers.currentNodeId)?.name||answers.currentNodeId;
  const finalName=nodeById(answers.finalNodeId)?.name||answers.finalNodeId;
+ const plannedName=answers.plannedNodeId?nodeById(answers.plannedNodeId)?.name||answers.plannedNodeId:null;
 
  const run=async(a=answers,h=history)=>{
    pendingRoute.current?.abort();const controller=new AbortController();pendingRoute.current=controller;
@@ -75,6 +76,7 @@ export default function App(){
    setAiIntro(null);
    setAiSource(null);
    setScreen('results');
+   track('itinerary_recorded',{currentNodeId:a.currentNodeId,finalNodeId:a.finalNodeId,plannedNodeId:a.plannedNodeId||'',plannedStayMin:a.plannedNodeId?a.plannedStayMin||0:0});
    track('recommendation_viewed',{count:r.length,currentNodeId:a.currentNodeId,finalNodeId:a.finalNodeId});
  };
  const beginQuestions=()=>{setStep(0);setAiIntro(null);setAiSource(null);setAnswers(a=>({...a,firstVisit:!history}));setScreen('questions');track('questionnaire_started')};
@@ -93,7 +95,7 @@ export default function App(){
    {screen==='home'&&<section className="hero cardless">
     <p className="eyebrow">HIKONE DETOUR</p>
     <h1>あと少し、<br/>彦根に寄り道しませんか？</h1>
-    <p>今いる場所と帰る場所、残り時間に合わせて、今からできることを3つまで提案します。</p>
+    <p>決まっている予定を守り、残り時間で寄れる場所を最大3つ提案します。</p>
     {last&&<p className="muted">前回は「{last.type}」を体験しました。</p>}
     <button className="primary" onClick={beginQuestions}>選択肢から探す<span>5回ほどタップするだけです。</span></button>
     <button className="secondary" onClick={()=>setScreen('catalog')}>彦根の行き先一覧を見る<span>歴史・ひこにゃん・写真・食などから探せます。</span></button>
@@ -120,7 +122,7 @@ export default function App(){
     {!routingBusy&&routingSource==='maps'&&<p className="maps-attribution" translate="no">Google Maps</p>}
     {aiIntro&&<div className="ai-summary"><p>{aiIntro}</p></div>}
     {gps&&<p className="gps-notice">Google Mapsの出発点には取得した現在地を使います。下の所要時間は選択した出発地点（{shortName(currentName)}）を基準とした参考値です。</p>}
-    <div className="route-context"><b>{shortName(currentName)}</b><span>→</span><b>{shortName(finalName)}</b><small>残り {answers.remainingTimeMin}分</small></div>
+    <div className="route-context"><b>{shortName(currentName)}</b>{plannedName&&<><span>→</span><b>{shortName(plannedName)}（予定）</b></>}<span>→</span><b>{shortName(finalName)}</b><small>残り {answers.remainingTimeMin}分</small></div>
     <p className="note">歩行ペース：{answers.walkingPace==='slow'?'休憩しながら':answers.walkingPace==='relaxed'?'ゆっくり':'普通'} ／ 状況：{answers.walkingConditions==='rain'?'雨・足元が悪い':answers.walkingConditions==='heat'?'暑い・疲れやすい':'通常'}{answers.maxWalkMin!==null?' ／ 徒歩は合計'+answers.maxWalkMin+'分まで':''}。読み取りが違う場合は条件を変更してください。</p>
     {answers.interestTagIds.length>0&&<div className="selected-tags">{friendlySelectedTags(answers.interestTagIds).map(t=><span key={t}>{t}</span>)}</div>}
     {!routingBusy&&!recs.length&&<div className="strict-empty"><b>今回は無理に寄り道をおすすめしません。</b><p>残り時間が足りないか、必要な徒歩経路を取得できませんでした。帰る場所までの経路をGoogle Mapsで確認し、余裕を持って移動してください。</p></div>}
@@ -137,7 +139,7 @@ export default function App(){
         <small>徒歩約{r.walkingMinutes}分（追加歩行約{r.additionalWalkingMinutes}分）・体験{r.experienceMinutes}分・余裕{r.safetyBufferMinutes}分</small>
       </button>
       {visitorStory(r.nodeId,nodeById(r.nodeId)?.category||'').source&&<a className="story-source" href={visitorStory(r.nodeId,nodeById(r.nodeId)?.category||'').source} target="_blank" rel="noopener noreferrer">このお話の参考資料を見る ↗</a>}
-      <a className="result-map-link" href={googleMapsDirectionsUrl(gps?gps.lat+','+gps.lng:currentName,r.nodeName,finalName)} target="_blank" rel="noopener noreferrer" onClick={()=>track('navigation_clicked',{id:r.actionId,from:'results'})}>
+      <a className="result-map-link" href={googleMapsItineraryUrl(gps?gps.lat+','+gps.lng:currentName,r.routeNodeIds,finalName)} target="_blank" rel="noopener noreferrer" onClick={()=>track('navigation_clicked',{id:r.actionId,from:'results'})}>
         Google Mapsで経路を見る ↗
       </a>
     </div>)}</div>
@@ -155,7 +157,7 @@ export default function App(){
     {visitorStory(selected.nodeId,nodeById(selected.nodeId)?.category||'').source&&<a className="story-source" href={visitorStory(selected.nodeId,nodeById(selected.nodeId)?.category||'').source} target="_blank" rel="noopener noreferrer">このお話の参考資料を見る ↗</a>}
     <div className="mission"><small>ここですること</small><br/><b>{friendlyAction(selected.actionName)}</b></div>
     <MapEmbed placeName={selected.nodeName}/>
-    <a className="result-map-link detail-map-link" href={googleMapsDirectionsUrl(gps?gps.lat+','+gps.lng:currentName,selected.nodeName,finalName)} target="_blank" rel="noopener noreferrer" onClick={()=>track('navigation_clicked',{id:selected.actionId,from:'detail'})}>Google Mapsで経路を見る ↗</a>
+    <a className="result-map-link detail-map-link" href={googleMapsItineraryUrl(gps?gps.lat+','+gps.lng:currentName,selected.routeNodeIds,finalName)} target="_blank" rel="noopener noreferrer" onClick={()=>track('navigation_clicked',{id:selected.actionId,from:'detail'})}>Google Mapsで経路を見る ↗</a>
     <div className="breakdown">
       <div><b>{shortName(finalName)}へ直行</b><span>約{selected.originalRouteMinutes}分</span></div>
       <div><b>この寄り道をする</b><span>約{selected.viaRouteMinutes}分</span></div>
@@ -177,7 +179,7 @@ export default function App(){
     <p>「{friendlyNodeName(selected.nodeName)}」で、<br/><b>{friendlyAction(selected.actionName)}</b></p>
     <div className="time-big">+{selected.detourMinutes}分</div>
     <MapEmbed placeName={selected.nodeName}/>
-    <a className="secondary anchor map-open" href={googleMapsDirectionsUrl(gps?gps.lat+','+gps.lng:currentName,selected.nodeName,finalName)} target="_blank" rel="noopener noreferrer" onClick={()=>track('navigation_clicked',{id:selected.actionId,from:'go'})}>Google Mapsで経路案内を開く ↗</a>
+    <a className="secondary anchor map-open" href={googleMapsItineraryUrl(gps?gps.lat+','+gps.lng:currentName,selected.routeNodeIds,finalName)} target="_blank" rel="noopener noreferrer" onClick={()=>track('navigation_clicked',{id:selected.actionId,from:'go'})}>Google Mapsで経路案内を開く ↗</a>
     <div className="checkpoint-box"><b>寄り道できたら</b><p>戻って「行ってきた」を押してください。寄り道の記録が残ります。</p></div>
     <button className="primary" onClick={()=>markCompleted(true)}>行ってきた</button>
     <button className="link" onClick={()=>markCompleted(false)}>今回は行かなかった</button>
@@ -214,6 +216,15 @@ function Questionnaire({step,setStep,answers,setAnswers,gps,gpsBusy,gpsError,req
     <Choice value={answers.currentNodeId} setValue={v=>setAnswers({...answers,currentNodeId:String(v)})} options={locs}/>
    </>},
   {q:'最後にどこへ行きますか？',body:<Choice value={answers.finalNodeId} setValue={v=>setAnswers({...answers,finalNodeId:String(v)})} options={locs}/>},
+  {q:'すでに行くと決めている場所は？',body:<>
+    <p className="note">行く予定の場所を必ず経由します。現在は1地点まで。</p>
+    <Choice value={answers.plannedNodeId||''} setValue={v=>setAnswers({...answers,plannedNodeId:String(v)})}
+      options={['','P40','P01','P02'].filter(id=>!id||![answers.currentNodeId,answers.finalNodeId].includes(id)).map(id=>[id,id?shortName(nodeById(id)?.name||id):'決まっていない'])}/>
+    {answers.plannedNodeId&&<><p>そこで何分過ごす予定ですか？</p>
+      <Choice value={answers.plannedStayMin||15} setValue={v=>setAnswers({...answers,plannedStayMin:Number(v)})}
+        options={[[15,'15分'],[30,'30分'],[60,'60分']]}/>
+      <p className="note">滞在時間はご自身の予定です。営業時間と待ち時間は別途確認してください。</p></>}
+  </>},
   {q:'あとどのくらい時間がありますか？',body:<Choice value={answers.remainingTimeMin} setValue={v=>setAnswers({...answers,remainingTimeMin:Number(v)})} options={[[20,'20分'],[35,'35分'],[60,'60分'],[90,'90分以上']]}/>},
   {q:'今、何がしたいですか？',body:<InterestChoices values={answers.interestTagIds} setValues={v=>setAnswers({...answers,interestTagIds:v})}/>},
   {q:'寄り道はどのくらいならOK？',body:<Choice value={answers.detourPreference} setValue={v=>{const x=String(v) as Answers['detourPreference'];setAnswers({...answers,detourPreference:x,discoveryOptIn:x!=='最短'})}} options={[['最短','なるべく寄り道しない'],['少しなら','少しならOK'],['積極','せっかくなので寄りたい']]}/>} ,
@@ -253,6 +264,12 @@ function googleMapsEmbedUrl(placeName:string){
  return 'https://www.google.com/maps?q='+encodeURIComponent(googleMapsQuery(placeName))+'&output=embed';
 }
 
+function googleMapsItineraryUrl(current:string,ids:string[]|undefined,final:string){
+ const names=(ids||[]).slice(1,-1).map(id=>nodeById(id)?.name||id);
+ const q=new URLSearchParams({api:'1',origin:googleMapsQuery(current),destination:googleMapsQuery(final),travelmode:'walking'});
+ if(names.length)q.set('waypoints',names.map(googleMapsQuery).join('|'));
+ return 'https://www.google.com/maps/dir/?'+q.toString();
+}
 function googleMapsDirectionsUrl(current:string,stop:string,final:string){
  const p=new URLSearchParams({
   api:'1',

@@ -26,6 +26,24 @@ describe('deterministic feasibility',()=>{
   });
 });
 
+describe('mandatory planned visit',()=>{
+  it('preserves the planned visit and permits a detour after it',()=>{
+    const a={...answers,plannedNodeId:'P02',plannedStayMin:20,remainingTimeMin:70,interestTagIds:[]};
+    const legs={'S01>P02':{minutes:10,distance:600},'P02>D01':{minutes:10,distance:600},
+      'S01>P01':{minutes:9,distance:500},'P01>P02':{minutes:10,distance:500},
+      'P02>P01':{minutes:4,distance:250},'P01>D01':{minutes:10,distance:600}};
+    const r=recommend(a,null,legs).find(x=>x.nodeId==='P01');
+    expect(r?.routeNodeIds).toEqual(['S01','P02','P01','D01']);
+    expect(r?.originalRouteMinutes).toBe(40);
+    expect(r?.viaRouteMinutes).toBe(49);
+    expect(r?.detourMinutes).toBe(9);
+  });
+  it('does not silently skip a mandatory stop if travel data is missing',()=>{
+    const a={...answers,plannedNodeId:'P02',plannedStayMin:15,remainingTimeMin:90};
+    expect(recommend(a,null,{'S01>D01':{minutes:10,distance:700}})).toEqual([]);
+  });
+});
+
 describe('frontend routes',()=>{
   it('returns no provisional recommendations on network failure',async()=>{
     vi.stubGlobal('fetch',vi.fn().mockRejectedValue(new Error('offline')));
