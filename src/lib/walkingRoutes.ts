@@ -12,11 +12,18 @@ export async function autoRecommend(answers:Answers,history:HistoryState|null,_o
   };
   if(!nodeById(answers.currentNodeId)||!nodeById(answers.finalNodeId)||!Number.isFinite(answers.remainingTimeMin)||answers.remainingTimeMin<0)
     return {recommendations:[],source:'unavailable',warning:'出発地・帰着地・残り時間を確認してください。'};
-  const candidates=routingCandidateIds(answers,history);
+  if(answers.plannedNodeId&&(!nodeById(answers.plannedNodeId)||
+    [answers.currentNodeId,answers.finalNodeId].includes(answers.plannedNodeId)||
+    !Number.isFinite(answers.plannedStayMin)||Number(answers.plannedStayMin)<0))
+    return {recommendations:[],source:'unavailable',warning:'必ず行く予定の場所と滞在時間を確認してください。'};
+  const candidates=routingCandidateIds(answers,history).slice(0,answers.plannedNodeId?3:8);
   if(!candidates.length)return {recommendations:[],source:'unavailable',warning:'現在の条件に合う候補がありません。'};
   const endpoint=import.meta.env.VITE_WALKING_ROUTE_ENDPOINT?.trim() || (import.meta.env.DEV?'/api/walking-routes':'');
   if(!endpoint)return fallback('徒歩経路サービスが未設定です。');
-  const pairs=[{from:answers.currentNodeId,to:answers.finalNodeId},...candidates.flatMap(id=>[{from:answers.currentNodeId,to:id},{from:id,to:answers.finalNodeId}])].filter(p=>p.from!==p.to);
+  const baseline=[answers.currentNodeId,...(answers.plannedNodeId?[answers.plannedNodeId]:[]),answers.finalNodeId];
+  const pairs=[...baseline.slice(1).map((to,i)=>({from:baseline[i],to})),
+    ...candidates.flatMap(id=>baseline.slice(1).flatMap((to,i)=>[{from:baseline[i],to:id},{from:id,to}]))]
+    .filter(p=>p.from!==p.to);
   const unique=[...new Map(pairs.map(p=>[p.from+'>'+p.to,p])).values()];
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),25000);
   const cancel=()=>controller.abort();signal?.addEventListener('abort',cancel,{once:true});if(signal?.aborted)cancel();
@@ -32,7 +39,7 @@ export async function autoRecommend(answers:Answers,history:HistoryState|null,_o
       if(!leg||typeof leg.seconds!=='number'||typeof leg.meters!=='number'||!Number.isFinite(leg.seconds)||!Number.isFinite(leg.meters)||leg.seconds<=0||leg.meters<=0||leg.seconds>86400||leg.meters>100000)continue;
       routed[key]={minutes:adjustedMinutes(leg.seconds,answers),distance:Math.round(leg.meters)};
     }
-    if(answers.currentNodeId!==answers.finalNodeId&&!routed[answers.currentNodeId+'>'+answers.finalNodeId])throw new Error('Missing direct route');
+    if(baseline.slice(1).some((to,i)=>baseline[i]!==to&&!routed[baseline[i]+'>'+to]))throw new Error('Missing mandatory route');
     const partial=Object.keys(routed).length<unique.length;
     return {recommendations:recommend(answers,history,routed),source:'maps',warning:'Google Maps の徒歩推定を歩行ペース・天候で補正し、計画の余裕5分を加えています。地点の入口・座標と一部の滞在時間は未検証です。'+(partial?' 一部の経路を取得できず、候補を省略しました。':'')};
   } catch {
