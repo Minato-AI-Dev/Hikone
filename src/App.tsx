@@ -8,6 +8,7 @@ import HikoneAI from './HikoneAI';
 import DestinationCatalog from './DestinationCatalog';
 import { visitorStory } from './data/visitorStories';
 import { autoRecommend } from './lib/walkingRoutes';
+import { pilotPlaces,evaluateFix,readVisits,writeVisits,clearVisits,type CandidateState,type DetectedVisit } from './lib/visitDetection';
 
 type Screen='home'|'ai'|'questions'|'results'|'detail'|'go'|'done'|'history'|'catalog';
 const defaultAnswers:Answers={currentNodeId:'S01',finalNodeId:'D01',plannedNodeId:'',plannedStayMin:15,remainingTimeMin:35,interestTagIds:[],availableMode:'徒歩',maxWalkMin:null,detourPreference:'少しなら',discoveryOptIn:true,firstVisit:true,walkingPace:'standard',walkingConditions:'normal'};
@@ -26,6 +27,12 @@ function getGps():Promise<GPSPosition>{
 
 export default function App(){
  const [history,setHistory]=useState<HistoryState|null>(()=>loadHistory());
+ const [visits,setVisits]=useState<DetectedVisit[]>(()=>readVisits());
+ const visitRef=useRef<DetectedVisit[]>(visits);visitRef.current=visits;
+ const watchRef=useRef<number|null>(null);
+ const candidateRef=useRef<CandidateState>(null);
+ const [tracking,setTracking]=useState(false);
+ const [visitStatus,setVisitStatus]=useState('');
  const [analyticsConsent,setConsent]=useState<boolean>(()=>hasAnalyticsConsent());
  const [screen,setScreenState]=useState<Screen>('home');
  const pendingRoute=useRef<AbortController|null>(null);
@@ -58,6 +65,38 @@ export default function App(){
  };
 
  useEffect(()=>{track('app_open');if(history)track('returning_user_detected')},[]);
+ useEffect(()=>()=>{if(watchRef.current!==null)navigator.geolocation?.clearWatch(watchRef.current)},[]);
+ const stopTracking=()=>{
+  if(watchRef.current!==null)navigator.geolocation?.clearWatch(watchRef.current);
+  watchRef.current=null;candidateRef.current=null;setTracking(false);
+ };
+ const startTracking=()=>{
+  if(!navigator.geolocation){setVisitStatus('位置情報に対応していないブラウザです。');return;}
+  if(watchRef.current!==null)return;
+  setVisitStatus('位置情報を確認しています。');
+  try{
+   watchRef.current=navigator.geolocation.watchPosition(pos=>{
+    const result=evaluateFix(pos.coords,Date.now(),candidateRef.current);
+    candidateRef.current=result.candidate;
+    if(result.arrived&&!visitRef.current.some(v=>v.nodeId===result.arrived)){
+     const next=[...visitRef.current,{nodeId:result.arrived,firstSeenAt:new Date().toISOString(),method:'gps_candidate' as const,confirmed:false}];
+     visitRef.current=next;setVisits(next);writeVisits(next);
+     track('visit_candidate_detected',{id:result.arrived,method:'gps_candidate'});
+     setVisitStatus('近くにいた可能性のある地点を記録しました。終了後に訪問確認してください。');
+    }
+   },err=>{setVisitStatus(err.code===1?'位置情報が許可されませんでした。':'位置情報を取得できませんでした。');stopTracking();},
+   {enableHighAccuracy:true,maximumAge:0,timeout:15000});
+   setTracking(true);
+  }catch{setVisitStatus('位置情報の観測を開始できませんでした。');}
+ };
+ const reviewVisit=(id:string,confirmed:boolean)=>{
+  const existing=visitRef.current.find(v=>v.nodeId===id);
+  const next=existing?visitRef.current.map(v=>v.nodeId===id?{...v,confirmed}:v):
+   [...visitRef.current,{nodeId:id,firstSeenAt:new Date().toISOString(),method:'self_report' as const,confirmed}];
+  visitRef.current=next;setVisits(next);writeVisits(next);
+  track('visit_reviewed',{id,method:existing?.method||'self_report',enabled:confirmed});
+ };
+ const removeVisits=()=>{stopTracking();clearVisits();visitRef.current=[];setVisits([]);setVisitStatus('訪問記録を削除しました。');};
  const last=useMemo(()=>actions.find(a=>a.id===lastCompletedId(history)),[history]);
  const currentName=nodeById(answers.currentNodeId)?.name||answers.currentNodeId;
  const finalName=nodeById(answers.finalNodeId)?.name||answers.finalNodeId;
@@ -198,8 +237,24 @@ export default function App(){
     <button className="secondary" onClick={()=>{setHistory(addValidation(selected.actionId,helpful,counter));setScreen('home')}}>今日はここまで</button>
    </section>}
 
-   {screen==='history'&&<section><p className="eyebrow">これまでの彦根</p><h2>寄り道の記録</h2><p>この端末で寄り道した記録を保存しています。</p><button className="link" onClick={()=>setScreen('home')}>戻る</button></section>}
+   {screen==='history'&&<section><p className="eyebrow">これまでの彦根</p><h2>今日の訪問地点を確認</h2>
+ <p>自動検出は「近くにいた可能性」です。実際に訪れた地点だけチェックしてください。</p>
+ {pilotPlaces.map(place=><label key={place.id} className="catalog-check"><input type="checkbox"
+  checked={visits.some(v=>v.nodeId===place.id&&v.confirmed)} onChange={e=>reviewVisit(place.id,e.target.checked)}/>
+  {place.name} {visits.some(v=>v.nodeId===place.id&&v.method==='gps_candidate')?'（位置情報で検出）':'（手動確認）'}</label>)}
+ <p className="note">訪問確認済み {visits.filter(v=>v.confirmed).length}地点。未確認の検出地点は訪問実績に数えません。</p>
+ <button className="secondary" onClick={removeVisits}>端末内の訪問記録を削除する</button>
+ <button className="link" onClick={()=>setScreen('home')}>戻る</button></section>
   </main>
+  <section className="checkpoint-box" aria-label="周遊記録" style={{margin:'12px auto',maxWidth:640}}>
+   <b>今日の彦根を記録する（任意）</b>
+   <p>開始すると、アプリを開いている間だけ位置情報から訪問候補を判定します。位置座標や移動軌跡は保存・送信しません。アプリを閉じると観測できません。</p>
+   <button className="secondary" onClick={tracking?()=>{stopTracking();setVisitStatus('観測を停止しました。')}:startTracking}>{tracking?'観測を停止':'位置情報の観測を開始'}</button>
+   {tracking&&<p role="status">位置情報を観測中</p>}
+   {visitStatus&&<p className="note" role="status">{visitStatus}</p>}
+   <p className="note">検出・申告 {visits.length}地点 / 確認済み {visits.filter(v=>v.confirmed).length}地点</p>
+   <button className="secondary" onClick={()=>setScreen('history')}>訪問した場所を確認・追加</button>
+  </section>
   <footer className="note"><a href={import.meta.env.BASE_URL+'privacy.html'} target="_blank" rel="noopener noreferrer">プライバシー</a> · <a href={import.meta.env.BASE_URL+'terms.html'} target="_blank" rel="noopener noreferrer">利用規約</a></footer>
   <nav><button onClick={()=>setScreen('home')}>ホーム</button><button onClick={beginQuestions}>寄り道を探す</button><button onClick={()=>setScreen('history')}>履歴</button></nav>
  </div>
