@@ -244,7 +244,7 @@ export default function App(){
   {place.name} {visits.some(v=>v.nodeId===place.id&&v.method==='gps_candidate')?'（位置情報で検出）':'（手動確認）'}</label>)}
  <p className="note">訪問確認済み {visits.filter(v=>v.confirmed).length}地点。未確認の検出地点は訪問実績に数えません。</p>
  <button className="secondary" onClick={removeVisits}>端末内の訪問記録を削除する</button>
- <button className="link" onClick={()=>setScreen('home')}>戻る</button></section>
+ <button className="link" onClick={()=>setScreen('home')}>戻る</button></section>}
   </main>
   <section className="checkpoint-box" aria-label="周遊記録" style={{margin:'12px auto',maxWidth:640}}>
    <b>今日の彦根を記録する（任意）</b>
