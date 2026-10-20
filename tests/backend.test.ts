@@ -16,6 +16,16 @@ it('uses server place identifiers and walking-only fields without returning keys
   expect(sent).toMatchObject({travelMode:'WALK',languageCode:'ja-JP',origin:{placeId:'ChIJFUSUCwDVA2ARZupipKG4HAU'},destination:{placeId:'ChIJqSwSmsjUA2ARUaJr69Vmcc4'}});
   expect(JSON.stringify(r.body)).not.toContain('secret');expect(r.headers['Cache-Control']).toBe('no-store');
 });
+it('uses the officially published street address for P02 instead of an ambiguous place-name lookup',async()=>{
+  const r=res();await handler(req([{from:'PK01',to:'P02'},{from:'P02',to:'P01'}]),r);
+  expect(r.code).toBe(200);
+  const calls=vi.mocked(fetch).mock.calls.filter(call=>String(call[0]).includes('routes.googleapis.com'));
+  expect(calls).toHaveLength(2);
+  const requests=calls.map(call=>JSON.parse(call[1]!.body as string));
+  expect(requests[0].destination).toEqual({address:'〒522-0064 滋賀県彦根市本町1丁目8番28号'});
+  expect(requests[1].origin).toEqual({address:'〒522-0064 滋賀県彦根市本町1丁目8番28号'});
+  expect(r.body.partial).toBe(false);
+});
 it('deduplicates and resolves same-place pairs without Google',async()=>{
   const r=res();await handler(req([{from:'S01',to:'S01'},{from:'S01',to:'D01'},{from:'S01',to:'D01'}]),r);
   expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);expect(r.body.legs['S01>S01']).toEqual({seconds:0,meters:0});
