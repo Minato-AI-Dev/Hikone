@@ -1,0 +1,62 @@
+/** Internet-only research. Never interpret web listings as live store stock, live openings or verified entrances. */
+export type OnlineShopResearch = {
+ shopId:'SHOP001'|'SHOP002'|'SHOP003';
+ verifiedAt:'2026-10-22';
+ officialDirectoryUrl:string;
+ officialSiteUrl:string|null;
+ socialUrl:string|null;
+ history:string|null;
+ onlineConfirmedCategories:string[];
+ onlineCatalogExamples:string[];
+ catalogExampleSource:string|null;
+ onlineSalesMentioned:boolean|null;
+ onSitePriceRangeYen:null;
+ storeSpecificItemStockVerified:false;
+ paymentMethodsVerified:false;
+ reservationRequiredVerified:null;
+ pedestrianEntranceVerified:false;
+ minimumVisitMinutes:null;
+ evidenceStatus:'published_online_only';
+ notes:string;
+};
+export const onlineShopResearch:Record<OnlineShopResearch['shopId'],OnlineShopResearch>={
+ SHOP001:{
+  shopId:'SHOP001',verifiedAt:'2026-10-22',
+  officialDirectoryUrl:'https://www.4bancho.com/members/moheron-studio',
+  officialSiteUrl:null,socialUrl:'https://www.instagram.com/moheron_studio/',
+  history:null,
+  onlineConfirmedCategories:['作者監修ひこにゃんグッズ','オリジナルグッズ'],
+  onlineCatalogExamples:['ひこにゃんえほん関連キャラクター商品（彦根観光パンフレット掲載）'],
+  catalogExampleSource:'https://www.hikoneshi.com/hikone-tourism-2025/img/PDF/hikone_2024.pdf',
+  onlineSalesMentioned:null,onSitePriceRangeYen:null,storeSpecificItemStockVerified:false,
+  paymentMethodsVerified:false,reservationRequiredVerified:null,pedestrianEntranceVerified:false,
+  minimumVisitMinutes:null,evidenceStatus:'published_online_only',
+  notes:'公式案内のSNSは最新情報確認用。個別商品は現在の実店舗在庫を保証しない。'
+ },
+ SHOP002:{
+  shopId:'SHOP002',verifiedAt:'2026-10-22',
+  officialDirectoryUrl:'https://www.4bancho.com/members/sengoku-zakura',
+  officialSiteUrl:'https://www.j-select-14.com/',socialUrl:null,
+  history:'2023-07-14に現住所へリニューアル開店（商店街公式掲載）',
+  onlineConfirmedCategories:['戦国武将グッズ','武将印（戦将の符）','土産・雑貨'],
+  onlineCatalogExamples:['井伊直政の武将足袋靴下','彦根城ピンバッジ','戦将の符'],
+  catalogExampleSource:'https://www.j-select-14.com/?cbid=2400444&csid=0&mode=cate&sort=p',
+  onlineSalesMentioned:true,onSitePriceRangeYen:null,storeSpecificItemStockVerified:false,
+  paymentMethodsVerified:false,reservationRequiredVerified:null,pedestrianEntranceVerified:false,
+  minimumVisitMinutes:null,evidenceStatus:'published_online_only',
+  notes:'オンラインショップ掲載商品・価格は実店舗の在庫・価格とは別。オンライン限定商品もある。'
+ },
+ SHOP003:{
+  shopId:'SHOP003',verifiedAt:'2026-10-22',
+  officialDirectoryUrl:'https://www.4bancho.com/members/shikano',
+  officialSiteUrl:'http://www.hikone.to/shikano/',socialUrl:null,
+  history:'大正14年（1925年）創業（商店街公式掲載）',
+  onlineConfirmedCategories:['琵琶湖の天然湖魚','手作り佃煮','地元の食文化'],
+  onlineCatalogExamples:[],
+  catalogExampleSource:null,onlineSalesMentioned:true,
+  onSitePriceRangeYen:null,storeSpecificItemStockVerified:false,
+  paymentMethodsVerified:false,reservationRequiredVerified:null,pedestrianEntranceVerified:false,
+  minimumVisitMinutes:null,evidenceStatus:'published_online_only',
+  notes:'商店街公式案内で通信販売対応を明記。取扱魚種、商品別価格、決済方法、当日在庫は未確認。'
+ }
+};
