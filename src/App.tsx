@@ -98,7 +98,7 @@ export default function App(){
     <button className="primary" onClick={beginQuestions}>選択肢から探す<span>5回ほどタップするだけです。</span></button>
     <button className="secondary" onClick={()=>setScreen('catalog')}>彦根の行き先一覧を見る<span>歴史・ひこにゃん・写真・食などから探せます。</span></button>
     <button className="secondary ai-entry" onClick={beginAI}>自由入力で相談する<span>細かい希望があるときはこちら。</span></button>
-    <p className="note">徒歩時間は推定です。経路を取得できず実測区間もない場合、時間内に行ける候補は表示できません。</p>
+    <p className="note">徒歩・滞在時間はあくまで参考値です。余裕を見込んで提案しますが、混雑・体調・天候・寄り道で変わるため、帰着時刻は保証しません。</p>
     <label className="catalog-check"><input type="checkbox" checked={analyticsConsent} onChange={e=>{setConsent(e.target.checked);setAnalyticsConsent(e.target.checked);track('analytics_consent_changed',{enabled:e.target.checked})}}/> 実証調査に協力する（利用状況をこの端末に記録）</label>
     <p className="note">位置情報や自由入力の本文は記録しません。記録はこの端末内に保存され、送信されません。</p>
     {analyticsConsent&&<button className="secondary" onClick={downloadAnalytics}>調査ログをCSVで保存する</button>}
@@ -114,8 +114,8 @@ export default function App(){
    {screen==='questions'&&<Questionnaire step={step} setStep={setStep} answers={answers} setAnswers={setAnswers} gps={gps} gpsBusy={gpsBusy} gpsError={gpsError} requestGps={requestGps} onDone={()=>{track('questionnaire_completed');run(answers)}}/>}
 
    {screen==='results'&&<section>
-    <p className="eyebrow">今から行けるところ</p>
-    <h2>{routingBusy?'徒歩経路を確認中…':recs.length?'このあたりがおすすめです':'今の条件では、寄り道なしが安心です'}</h2>
+    <p className="eyebrow">今からの寄り道候補</p>
+    <h2>{routingBusy?'徒歩経路を確認中…':recs.length?'余裕を見込んだおすすめ':'参考時間ではおすすめを判断できません'}</h2>
     {routingNotice&&<p className="note" role="status">{routingNotice}</p>}
     {!routingBusy&&routingSource==='maps'&&<p className="maps-attribution" translate="no">Google Maps</p>}
     {aiIntro&&<div className="ai-summary"><p>{aiIntro}</p></div>}
@@ -163,7 +163,7 @@ export default function App(){
       <div><b>体験と計画の余裕</b><span>{selected.experienceMinutes}分＋{selected.safetyBufferMinutes}分</span></div>
       {selected.additionalDistanceM!==null&&<div><b>追加で歩く距離</b><span>約{selected.additionalDistanceM}m</span></div>}
     </div>
-    <p className="route-result">帰る場所はそのまま。寄り道で <b>+{selected.detourMinutes}分</b> です。</p>
+    <p className="route-result">帰る場所はそのまま。寄り道は参考で <b>+{selected.detourMinutes}分程度</b> です。</p>
     <p className="note">{selected.dataStatus}</p>
     {selected.dataStatus.includes('Google Maps')&&<p className="maps-attribution" translate="no">Google Maps</p>}
     {debugMode&&<div className="debug-box"><b>Debug</b><p>{selected.dataStatus}</p><p>ID: {selected.id} / Layer: {selected.layer}</p></div>}
