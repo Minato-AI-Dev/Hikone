@@ -3,12 +3,12 @@ import { nodeById } from '../data/dbV4';
 import { recommend, routingCandidateIds, type RoutedLegs } from './recommend';
 import { adjustedMinutes } from './walkingModel';
 
-export type AutoRouteResult={recommendations:ReturnType<typeof recommend>;source:'maps'|'measured'|'demo'|'unavailable';warning:string};
+export type AutoRouteResult={recommendations:ReturnType<typeof recommend>;source:'maps'|'demo'|'unavailable';warning:string};
 export async function autoRecommend(answers:Answers,history:HistoryState|null,_originGps?:{lat:number;lng:number}|null,signal?:AbortSignal):Promise<AutoRouteResult> {
   const fallback=(message:string):AutoRouteResult=>{
     const demo=import.meta.env.VITE_ROUTING_DEMO==='true';
-    const recommendations=recommend(answers,history,undefined,demo?'demo':'measured');
-    return {recommendations,source:demo?'demo':recommendations.length?'measured':'unavailable',warning:message+(demo?' 以下は現地未検証のデモです。移動前にGoogle Mapsで確認してください。':recommendations.length?' 現地実測の区間を基準とした目安を表示します。':' 信頼できる徒歩時間が揃わないため、時間内に行ける候補は表示できません。Google Mapsで確認してください。')};
+    const recommendations=demo?recommend(answers,history,undefined,'demo'):[];
+    return {recommendations,source:demo?'demo':'unavailable',warning:message+(demo?' 机上概算によるデモ用参考値です。実際の移動時間を保証しません。Google Mapsで経路をご確認ください。':' 参考徒歩時間を取得できないため、時間に余裕があると判断できる候補は表示しません。Google Mapsでご確認ください。')};
   };
   if(!nodeById(answers.currentNodeId)||!nodeById(answers.finalNodeId)||!Number.isFinite(answers.remainingTimeMin)||answers.remainingTimeMin<0)
     return {recommendations:[],source:'unavailable',warning:'出発地・帰着地・残り時間を確認してください。'};
@@ -34,7 +34,7 @@ export async function autoRecommend(answers:Answers,history:HistoryState|null,_o
     }
     if(answers.currentNodeId!==answers.finalNodeId&&!routed[answers.currentNodeId+'>'+answers.finalNodeId])throw new Error('Missing direct route');
     const partial=Object.keys(routed).length<unique.length;
-    return {recommendations:recommend(answers,history,routed),source:'maps',warning:'Google Maps の徒歩推定を歩行ペース・天候で補正し、計画の余裕5分を加えています。地点の入口・座標と一部の滞在時間は未検証です。'+(partial?' 一部の経路を取得できず、候補を省略しました。':'')};
+    return {recommendations:recommend(answers,history,routed),source:'maps',warning:'Google Maps の参考徒歩時間を歩行ペース・天候で補正し、計画上の余裕5分を加えています。混雑・個人差・寄り道によって変動し、時間内の到着は保証しません。地点の入口・座標と一部の滞在時間は未検証です。'+(partial?' 一部の経路を取得できず、候補を省略しました。':'')};
   } catch {
     if(signal?.aborted)return {recommendations:[],source:'unavailable',warning:''};
     return fallback('現在、徒歩経路を取得できません。');

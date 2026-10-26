@@ -2,24 +2,21 @@ import { Answers, HistoryState, Recommendation, ResearchCandidate } from '../typ
 import { actions, actionsForNode, DB_V4_META, edges, locationStatus, nodeById, nodes, nodeTags, photoPriority, tagNames } from '../data/dbV4';
 import { completedIds } from './history';
 import { provisionalActions,provisionalEdges,provisionalNodeIds } from '../data/provisionalWalking';
-import { measuredEdges } from '../data/measuredWalking';
 import { adjustedMinutes, WALKING_MODEL } from './walkingModel';
 
 export type Route={minutes:number;distance:number|null};
 export type RoutedLegs=Record<string,Route>;
 const legKey=(from:string,to:string)=>from+'>'+to;
 
-function usableEdges(mode:string,measuredOnly=false){
-  const verifiedPairs=new Set(measuredEdges.map(e=>[e.from,e.to].sort().join('|')));
-  return [...measuredEdges,...edges,...provisionalEdges].filter(e=>
-    e.mode===mode && (measuredOnly?e.policy==='実測済':['実測済','暫定可','仮運用','概算Demo'].includes(e.policy)) &&
-    typeof e.time==='number' &&
-    (e.policy==='実測済'||!verifiedPairs.has([e.from,e.to].sort().join('|')))
+function usableEdges(mode:string){
+  // Only for explicitly enabled demo fallback. Never prioritize field measurements.
+  return [...edges,...provisionalEdges].filter(e=>
+    e.mode===mode && ['暫定可','仮運用','概算Demo'].includes(e.policy) && typeof e.time==='number'
   );
 }
-function shortest(from:string,to:string,mode:string,measuredOnly=false):Route|null{
+function shortest(from:string,to:string,mode:string):Route|null{
   if(from===to) return {minutes:0,distance:0};
-  const es=usableEdges(mode,measuredOnly);
+  const es=usableEdges(mode);
   const adj=new Map<string,Array<{to:string;minutes:number;distance:number|null}>>();
   const add=(a:string,b:string,m:number,d:number|null)=>{
     const list=adj.get(a)||[];list.push({to:b,minutes:m,distance:d});adj.set(a,list);
@@ -64,12 +61,12 @@ function actionSupportsExplicitTheme(actionName:string,selected:string[]){
 function layerFor(nodeId:string,answers:Answers):'L1'|'L2'{
   return matchingTags(nodeId,answers.interestTagIds).length?'L1':'L2';
 }
-export function recommend(answers:Answers,history:HistoryState|null,routed?:RoutedLegs,source:'maps'|'measured'|'demo'=routed?'maps':'demo'):Recommendation[]{
+export function recommend(answers:Answers,history:HistoryState|null,routed?:RoutedLegs,source:'maps'|'demo'=routed?'maps':'demo'):Recommendation[]{
   if(!Number.isFinite(answers.remainingTimeMin)||answers.remainingTimeMin<0||
     (answers.maxWalkMin!==null&&(!Number.isFinite(answers.maxWalkMin)||answers.maxWalkMin<0)))return [];
   const route=(a:string,b:string)=>routed
     ? (a===b?{minutes:0,distance:0}:routed[legKey(a,b)]||null)
-    : (()=>{const leg=shortest(a,b,answers.availableMode,source==='measured');return leg?{...leg,minutes:adjustedMinutes(leg.minutes*60,answers)}:null;})();
+    : (()=>{const leg=shortest(a,b,answers.availableMode);return leg?{...leg,minutes:adjustedMinutes(leg.minutes*60,answers)}:null;})();
   const original=route(answers.currentNodeId,answers.finalNodeId);
   if(!original) return [];
   const done=completedIds(history);
@@ -111,9 +108,9 @@ export function recommend(answers:Answers,history:HistoryState|null,routed?:Rout
       originalDistanceM:original.distance,viaDistanceM:viaDistance,additionalDistanceM:additionalDistance,
       matchingTags:matches.map(t=>tagNames[t]||t),
       reason:layer==='L1'
-        ?'選んだテーマに合い、現在のV4データで時間成立を判定できる候補です。'
-        :'明示テーマを置き換えず、発見枠として追加できる候補です。',
-      dataStatus:source==='maps'?'Google Maps の徒歩推定に歩行ペース・天候補正と余裕5分を加算。地点の入口・座標は未検証、滞在時間は一部仮設定です。':source==='measured'?'現地実測の区間に歩行ペース・天候補正と余裕5分を加算。個人差があり、滞在時間は一部仮設定です。':'徒歩時間・滞在時間は机上の概算です。安全余裕5分を含む現地未検証のDemo表示です。'
+        ?'選んだテーマに合う寄り道です。徒歩・滞在の時間は参考値で、余裕を見込んでいます。'
+        :'希望のテーマ以外にも発見できる寄り道です。所要時間は目安です。',
+      dataStatus:source==='maps'?'Google Maps による参考徒歩時間に歩行ペース・天候補正と余裕5分を加算した計画上の目安です。混雑・寄り道・休憩により変動し、到着時刻は保証しません。':'机上の概算を利用したデモ用の参考値です。現地未検証で到着時刻は保証しません。'
     });
   }
   out.sort((a,b)=>{
@@ -130,7 +127,7 @@ function candidateBlockers(nodeId:string,answers:Answers){
   if(node.status!=='ACTIVE') blockers.push('MVP状態: '+node.status);
   if(!node.modes.includes(answers.availableMode)) blockers.push('徒歩モード未確定');
   const known=[...actionsForNode(nodeId),...provisionalActions.filter(a=>a.nodeId===nodeId)].some(a=>typeof a.minStay==='number'&&['KNOWN','仮設定','概算Demo'].includes(a.timeStatus));
-  if(!known) blockers.push('最低ACTION時間が未実測');
+  if(!known) blockers.push('最低滞在時間の参考値が未登録');
   const a=shortest(answers.currentNodeId,nodeId,answers.availableMode);
   const b=shortest(nodeId,answers.finalNodeId,answers.availableMode);
   if(!a||!b) blockers.push('使用可能EDGEが不足');
