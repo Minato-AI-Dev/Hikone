@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { nodes, nodeTags, tagNames } from './data/dbV4';
 import { visitorStory } from './data/visitorStories';
 import { foodPlaces } from './data/foodPlaces';
 import { shoppingPlaces } from './data/shoppingPlaces';
 
 type CatalogPlace = (typeof nodes)[number];
+type ShopStatus={shopId:string;status:'scheduled_open'|'scheduled_closed'|'unknown';checkedAt:string|null;reason:string;source:string};
+const shopStatusLabel=(status:ShopStatus|undefined)=>status?.status==='scheduled_open'?'取得時点では営業中':status?.status==='scheduled_closed'?'取得時点では営業時間外':'営業情報は未確認';
 const interestFilters = [
   {label:'すべて',tag:''},
   {label:'ひこにゃん',tag:'T_HIKONYAN'},
@@ -28,10 +30,35 @@ const cautious=(p:CatalogPlace)=>p.status!=='ACTIVE'||!isPubliclyAccessible(p) |
 const groupOrder=['CASTLE','CASTLE_TOWN','STATION','HANASHOBU','HONMACHI','MOTOMACHI','SERIBASHI','SERIKAWA','NANAMAGARI','LAKE_MATSUBARA'];
 
 export default function DestinationCatalog({onBack}:{onBack:()=>void}){
+ const [shopStatuses,setShopStatuses]=useState<Record<string,ShopStatus>>({});
+ const [shopChecking,setShopChecking]=useState(false);
+ const [shopNotice,setShopNotice]=useState('');
  const [query,setQuery]=useState('');
  const [tag,setTag]=useState('');
  const [onlyEasy,setOnlyEasy]=useState(false);
  const [area,setArea]=useState('すべて');
+ useEffect(()=>{
+   const endpoint=import.meta.env.VITE_SHOP_HOURS_ENDPOINT?.trim() || (import.meta.env.DEV?'/api/shop-hours':'');
+   if(!endpoint){setShopNotice('営業情報の自動確認は現在利用できません。');return;}
+   const controller=new AbortController();
+   setShopChecking(true);
+   fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({shopIds:shoppingPlaces.map(p=>p.id)}),signal:controller.signal})
+     .then(async response=>{if(!response.ok)throw new Error('status lookup unavailable');return response.json();})
+     .then(data=>{
+       if(controller.signal.aborted)return;
+       const statuses:Record<string,ShopStatus>={};
+       if(Array.isArray(data?.results))for(const r of data.results){
+         if(!r||typeof r.shopId!=='string'||!shoppingPlaces.some(p=>p.id===r.shopId))continue;
+         if(!['scheduled_open','scheduled_closed','unknown'].includes(r.status))continue;
+         statuses[r.shopId]={shopId:r.shopId,status:r.status,checkedAt:typeof r.checkedAt==='string'?r.checkedAt:null,reason:typeof r.reason==='string'?r.reason:'',source:typeof r.source==='string'?r.source:''};
+       }
+       setShopStatuses(statuses);
+       setShopNotice(typeof data?.notice==='string'?data.notice:'営業情報は参考表示です。最新状況は店舗にご確認ください。');
+     })
+     .catch(()=>{if(!controller.signal.aborted)setShopNotice('営業情報を取得できません。訪問前に店舗へご確認ください。');})
+     .finally(()=>{if(!controller.signal.aborted)setShopChecking(false)});
+   return ()=>controller.abort();
+ },[]);
  const list=useMemo(()=>{
    const text=query.trim().toLocaleLowerCase();
    return nodes.filter(p=>p.type==='poi'||p.type==='area')
@@ -63,8 +90,10 @@ export default function DestinationCatalog({onBack}:{onBack:()=>void}){
    <label className="catalog-check"><input type="checkbox" checked={onlyEasy} onChange={e=>setOnlyEasy(e.target.checked)}/> 公開場所として登録済みの候補だけ見る</label>
    <p className="catalog-count">{area==='すべて'?'行き先 '+list.length+'件・食のお店 '+foodFiltered.length+'件・買物候補 '+shopsFiltered.length+'件':'食のお店 '+foodFiltered.length+'件・買物候補 '+shopsFiltered.length+'件'}</p>
    {shopsFiltered.length>0&&<><h3>四番町スクエアのお買物候補</h3><p className="note">公式掲載情報を基にした調査候補です。店舗入口・店内所要時間・当日の営業は未確認のため、時間付きの自動推薦には含めません。</p>
+   <p className="note" role="status">{shopNotice||'営業情報は取得時点の参考情報で、到着時の営業を保証しません。'}</p>
    <div className="catalog-grid">{shopsFiltered.map(p=><article className="catalog-item" key={p.id}>
-    <div className="catalog-item-head"><h3>{p.name}</h3><span className="catalog-unverified">来店前に営業確認</span></div>
+    <div className="catalog-item-head"><h3>{p.name}</h3><span className="catalog-unverified">{shopChecking?'営業情報を確認中':shopStatusLabel(shopStatuses[p.id])}</span></div>
+    <p className="note">{shopStatuses[p.id]?.reason||'掲載営業時間だけでは当日の営業を確認できません。'}{shopStatuses[p.id]?.checkedAt?'（確認時刻：'+new Date(shopStatuses[p.id].checkedAt!).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo'})+'）':''}</p>
     <p className="catalog-category">{p.area} ・ {p.product}</p>
     <p className="catalog-desc">{p.suggestedActivity}</p>
     <p>所在地（公開案内）：{p.address}</p>
