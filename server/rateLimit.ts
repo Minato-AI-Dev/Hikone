@@ -11,7 +11,7 @@ redis.call('INCR', KEYS[1]); redis.call('EXPIRE', KEYS[1], 120)
 redis.call('INCRBY', KEYS[2], ARGV[4]); redis.call('EXPIRE', KEYS[2], 120)
 redis.call('INCRBY', KEYS[3], ARGV[4]); redis.call('EXPIRE', KEYS[3], 172800)
 return 1`;
-export async function reserveBudget(req:ApiRequest,service:'routes'|'ai',units:number):Promise<LimitResult> {
+export async function reserveBudget(req:ApiRequest,service:'routes'|'ai'|'analytics',units:number):Promise<LimitResult> {
   // Select a complete namespace; never send one provider's token to another URL.
   const custom=Boolean(process.env.UPSTASH_REDIS_REST_URL||process.env.UPSTASH_REDIS_REST_TOKEN);
   const url=custom?process.env.UPSTASH_REDIS_REST_URL:process.env.KV_REST_API_URL;
@@ -24,7 +24,7 @@ export async function reserveBudget(req:ApiRequest,service:'routes'|'ai',units:n
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),2000);
   try {
     const response=await fetch(url,{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},signal:controller.signal,
-      body:JSON.stringify(['EVAL',script,3,`hikone:${service}:ip:${minute}:${identity}`,`hikone:${service}:global:${minute}`,`hikone:${service}:day:${day}`,service==='routes'?6:4,service==='routes'?120:30,service==='routes'?300:50,units])});
+      body:JSON.stringify(['EVAL',script,3,`hikone:${service}:ip:${minute}:${identity}`,`hikone:${service}:global:${minute}`,`hikone:${service}:day:${day}`,service==='routes'?6:service==='analytics'?15:4,service==='routes'?120:service==='analytics'?400:30,service==='routes'?300:service==='analytics'?3000:50,units])});
     if(!response.ok)return 'unavailable';
     const data=await response.json() as {result?:unknown};return data.result===1?'allowed':data.result===0?'limited':'unavailable';
   } catch {return 'unavailable';} finally {clearTimeout(timer);}
