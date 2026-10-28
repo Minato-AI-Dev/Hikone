@@ -99,8 +99,8 @@ export default function App(){
     <button className="secondary" onClick={()=>setScreen('catalog')}>彦根の行き先一覧を見る<span>歴史・ひこにゃん・写真・食などから探せます。</span></button>
     <button className="secondary ai-entry" onClick={beginAI}>自由入力で相談する<span>細かい希望があるときはこちら。</span></button>
     <p className="note">徒歩時間は推定です。経路を取得できず実測区間もない場合、時間内に行ける候補は表示できません。</p>
-    <label className="catalog-check"><input type="checkbox" checked={analyticsConsent} onChange={e=>{setConsent(e.target.checked);setAnalyticsConsent(e.target.checked);track('analytics_consent_changed',{enabled:e.target.checked})}}/> 実証調査に協力する（利用状況をこの端末に記録）</label>
-    <p className="note">位置情報や自由入力の本文は記録しません。記録はこの端末内に保存され、送信されません。</p>
+    <label className="catalog-check"><input type="checkbox" checked={analyticsConsent} onChange={e=>{setConsent(e.target.checked);setAnalyticsConsent(e.target.checked);track('analytics_consent_changed',{enabled:e.target.checked})}}/> 実証調査に協力する（端末内の記録と、匿名の件数集計を送信）</label>
+    <p className="note">位置情報や自由入力本文は調査ログに含めません。同意中はイベント名のみを運営サーバーへ送信し、日別件数を集計します。個人の履歴は端末内に残ります。送信済みの集計件数は同意解除後も取り消せません。</p>
     {analyticsConsent&&<button className="secondary" onClick={downloadAnalytics}>調査ログをCSVで保存する</button>}
     {debugMode&&<DebugSummary/>}
    </section>}
