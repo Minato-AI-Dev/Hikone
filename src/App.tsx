@@ -117,14 +117,13 @@ export default function App(){
     {!routingBusy&&!recs.length&&<div className="strict-empty"><b>今回は無理に寄り道をおすすめしません。</b><p>残り時間が足りないか、必要な徒歩経路を取得できませんでした。帰る場所までの経路をGoogle Mapsで確認し、余裕を持って移動してください。</p></div>}
     <div className="cards">{recs.map(r=><div key={r.id} className="result-card">
       <button className="exp-card strategy-card" onClick={()=>selectRec(r)}>
-        <div className="strategy-head"><span className="pill">{r.matchingTags.length?'あなた向け':'ちょっと発見'}</span><span className="detour-badge">+{r.detourMinutes}分</span></div>
+        <div className="strategy-head"><span className="pill">{r.matchingTags.length?'あなた向け':'ちょっと発見'}</span><span className="detour-badge"><small>寄り道で追加</small><strong>＋{r.detourMinutes}分</strong></span></div>
         <h3>{friendlyNodeName(r.nodeName)}</h3>
         {r.dataStatus.includes('机上の概算')&&<small className="note">時間は仮の目安（現地未検証）</small>}
         <p className="experience-line">{friendlyAction(r.actionName)}</p>
         {r.matchingTags.length>0&&<p className="match-line">{r.matchingTags.join('・')}</p>}
         <p className="reason">{friendlyReason(r)}</p>
-        <small>{shortName(finalName)}まで含めて 約{r.viaRouteMinutes}分{r.additionalDistanceM!==null?' / 追加約'+r.additionalDistanceM+'m':''}</small>
-        <small>徒歩約{r.walkingMinutes}分（追加歩行約{r.additionalWalkingMinutes}分）・体験{r.experienceMinutes}分・余裕{r.safetyBufferMinutes}分</small>
+<span className="time-summary"><span>{shortName(finalName)}に着くまで</span><strong>約{r.viaRouteMinutes}分</strong></span>
       </button>
       {visitorStory(r.nodeId,nodeById(r.nodeId)?.category||'').source&&<a className="story-source" href={visitorStory(r.nodeId,nodeById(r.nodeId)?.category||'').source} target="_blank" rel="noopener noreferrer">このお話の参考資料を見る ↗</a>}
       <a className="result-map-link" href={googleMapsDirectionsUrl(gps?gps.lat+','+gps.lng:currentName,r.nodeName,finalName)} target="_blank" rel="noopener noreferrer" onClick={()=>track('navigation_clicked',{id:r.actionId,from:'results'})}>
@@ -136,21 +135,14 @@ export default function App(){
 
    {screen==='detail'&&selected&&<section>
     <p className="eyebrow">寄り道プラン</p>
-    <div className="detail-detour">+{selected.detourMinutes}分</div>
+    <div className="detail-detour"><small>寄り道で追加</small>＋{selected.detourMinutes}分</div>
     <h2>{friendlyNodeName(selected.nodeName)}</h2>
     <p>{friendlyReason(selected)}</p>
     {visitorStory(selected.nodeId,nodeById(selected.nodeId)?.category||'').source&&<a className="story-source" href={visitorStory(selected.nodeId,nodeById(selected.nodeId)?.category||'').source} target="_blank" rel="noopener noreferrer">このお話の参考資料を見る ↗</a>}
     <div className="mission"><small>ここですること</small><br/><b>{friendlyAction(selected.actionName)}</b></div>
     <MapEmbed placeName={selected.nodeName}/>
     <a className="result-map-link detail-map-link" href={googleMapsDirectionsUrl(gps?gps.lat+','+gps.lng:currentName,selected.nodeName,finalName)} target="_blank" rel="noopener noreferrer" onClick={()=>track('navigation_clicked',{id:selected.actionId,from:'detail'})}>Google Mapsで経路を見る ↗</a>
-    <div className="breakdown">
-      <div><b>{shortName(finalName)}へ直行</b><span>約{selected.originalRouteMinutes}分</span></div>
-      <div><b>この寄り道をする</b><span>約{selected.viaRouteMinutes}分</span></div>
-      <div><b>追加で歩く時間</b><span>約{selected.additionalWalkingMinutes}分</span></div>
-      <div><b>体験と計画の余裕</b><span>{selected.experienceMinutes}分＋{selected.safetyBufferMinutes}分</span></div>
-      {selected.additionalDistanceM!==null&&<div><b>追加で歩く距離</b><span>約{selected.additionalDistanceM}m</span></div>}
-    </div>
-    <p className="route-result">帰る場所はそのまま。寄り道で <b>+{selected.detourMinutes}分</b> です。</p>
+    <div className="time-summary"><span>{shortName(finalName)}に着くまで</span><strong>約{selected.viaRouteMinutes}分</strong></div>
     <p className="note">時間は目安です。開館時間や道の状況を確認してお出かけください。</p>
     {selected.dataStatus.includes('Google Maps')&&<p className="maps-attribution" translate="no">Google Maps</p>}
     <button className="primary" onClick={beginExperience}>ここに寄る</button>

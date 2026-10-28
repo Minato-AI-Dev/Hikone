@@ -72,3 +72,21 @@ it('leaves loading and allows retry after an unexpected recommendation failure',
  expect(screen.queryByText('徒歩経路を確認中…')).toBeNull();
  expect(screen.getByRole('button',{name:'条件を変える'})).toBeTruthy();
 });
+
+it('shows only additional time and total time on cards and details',async()=>{
+ vi.mocked(autoRecommend).mockResolvedValueOnce({
+  recommendations:[{id:'time-example',nodeId:'S01',nodeName:'黒門橋周辺',actionId:'A01',actionName:'お堀を眺める',matchingTags:['景色'],dataStatus:'Google Maps',detourMinutes:24,viaRouteMinutes:40,originalRouteMinutes:16,walkingMinutes:30,additionalWalkingMinutes:14,experienceMinutes:5,safetyBufferMinutes:5,additionalDistanceM:961} as any],
+  source:'maps',warning:'時間は目安です。'
+ });
+ render(<App/>);fireEvent.click(screen.getByRole('button',{name:'協力せずにはじめる'}));
+ for(let i=0;i<5;i++)fireEvent.click(screen.getByRole('button',{name:'次へ',exact:true}));
+ fireEvent.click(screen.getByRole('button',{name:'おすすめを見る',exact:true}));
+ const card=await screen.findByRole('button',{name:/黒門橋周辺/});
+ expect(card.textContent).toContain('寄り道で追加＋24分');
+ expect(card.textContent).toContain('彦根駅に着くまで約40分');
+ expect(card.textContent).not.toMatch(/徒歩約|追加歩行|体験5分|余裕5分|961/);
+ fireEvent.click(card);
+ expect(screen.getByText('彦根駅に着くまで')).toBeTruthy();
+ expect(screen.getByText('約40分')).toBeTruthy();
+ expect(document.body.textContent).not.toMatch(/へ直行|追加で歩く時間|体験と計画の余裕|追加で歩く距離|961/);
+});
