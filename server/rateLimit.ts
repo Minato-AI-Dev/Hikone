@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto';
 import { isIP } from 'node:net';
 import { header, type ApiRequest } from './http.js';
+import { analyticsTestRun,analyticsPrefix } from './aggregateAnalytics.js';
 export type LimitResult = 'allowed'|'limited'|'unavailable';
 // Atomic reservations; fixed windows can double bursts at a boundary. Also set Google quotas.
 const script=`local ip = tonumber(redis.call('GET', KEYS[1]) or '0')
@@ -23,8 +24,10 @@ export async function reserveBudget(req:ApiRequest,service:'routes'|'ai'|'analyt
   const identity=createHmac('sha256',salt).update(ip).digest('hex'),now=Date.now(),minute=Math.floor(now/60000),day=Math.floor(now/86400000);
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),2000);
   try {
+    // Keep route/AI and production limiter keys unchanged.
+    const prefix=service==='analytics'&&analyticsTestRun()?analyticsPrefix()+':limit':`hikone:${service}`;
     const response=await fetch(url,{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},signal:controller.signal,
-      body:JSON.stringify(['EVAL',script,3,`hikone:${service}:ip:${minute}:${identity}`,`hikone:${service}:global:${minute}`,`hikone:${service}:day:${day}`,service==='routes'?6:service==='analytics'?15:4,service==='routes'?120:service==='analytics'?400:30,service==='routes'?300:service==='analytics'?3000:50,units])});
+      body:JSON.stringify(['EVAL',script,3,`${prefix}:ip:${minute}:${identity}`,`${prefix}:global:${minute}`,`${prefix}:day:${day}`,service==='routes'?6:service==='analytics'?15:4,service==='routes'?120:service==='analytics'?400:30,service==='routes'?300:service==='analytics'?3000:50,units])});
     if(!response.ok)return 'unavailable';
     const data=await response.json() as {result?:unknown};return data.result===1?'allowed':data.result===0?'limited':'unavailable';
   } catch {return 'unavailable';} finally {clearTimeout(timer);}

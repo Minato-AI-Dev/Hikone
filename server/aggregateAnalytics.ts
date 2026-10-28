@@ -34,4 +34,25 @@ export async function redisCommand(cmd:string[]):Promise<unknown>{
     return data.result;
   }finally{clearTimeout(timeout);}
 }
-export const metricKey=(day:string,event:AggregateEvent)=>'hikone:aggregate:v1:'+day+':'+event;
+// A preview must explicitly opt into an isolated run; it can never use research keys.
+export function analyticsTestRun():string|null {
+  const run=process.env.HIKONE_ANALYTICS_TEST_RUN;
+  if(process.env.VERCEL_ENV==='preview'){
+    if(!run||!/^test-[a-z0-9-]{8,64}$/.test(run))throw new Error('Analytics test run not configured');
+    return run;
+  }
+  if(run)throw new Error('Analytics test runs require a preview deployment');
+  return null;
+}
+export function analyticsPrefix():string {
+  const run=analyticsTestRun();
+  return run?'hikone:aggregate:test:v1:'+run:'hikone:aggregate:v1';
+}
+export const metricKey=(day:string,event:AggregateEvent)=>analyticsPrefix()+':'+day+':'+event;
+export async function incrementMetric(day:string,event:AggregateEvent):Promise<unknown> {
+  const run=analyticsTestRun(),key=metricKey(day,event);
+  // Test keys also expire if a verifier is interrupted before cleanup.
+  return redisCommand(run
+    ?['EVAL',"local n=redis.call('INCR',KEYS[1]); redis.call('EXPIRE',KEYS[1],86400); return n",'1',key]
+    :['INCR',key]);
+}
