@@ -37,3 +37,21 @@ curl -H "Authorization: Bearer $HIKONE_ANALYTICS_ADMIN_TOKEN" \
 - レポートAPIを同じVercelドメインで呼び出す設計のため、GitHub Pages側のAPIキーやCORS変更は不要です。
 - セキュリティヘッダーを設定し、画面には集計値のみに限定した静的コンテンツを使用します。
 - 日別件数の閲覧APIを7回呼ぶため、RedisのGETを最大126件実行します。アクセスは管理者用途に限定してください。
+
+## 本番データを汚さない実接続テスト
+- Previewに限り `HIKONE_ANALYTICS_TEST_RUN=test-<一意な実行ID>` を設定します（小文字英数字・ハイフン、`test-` の後は8〜64文字）。
+- Previewの集計は必ずこの設定が必要です。未設定・不正値では503になり、本番キーにフォールバックしません。
+- Productionにはこの変数を設定しません。誤設定した場合も503となり、テスト用の削除操作は許可されません。
+- Previewには本番とは別の管理トークンを設定してください。本番の秘密値をコピー・上書きしないでください。
+- 保存先は `hikone:aggregate:test:v1:<実行ID>:<日本時間の日付>:<イベント名>` です。本番の `hikone:aggregate:v1:` と分離します。
+- 集計イベントのテストキーは加算の際に24時間のTTLを設定します。テスト用レート制限キーも本番と分離され、既存の短期TTLで自動削除されます。
+- Previewの同じダッシュボードには「テスト専用」を表示します。レポートJSONにも `testRun` が含まれます。
+- `scripts/verify-analytics-preview.mjs` を実行すると、テスト環境確認→有効イベント3件送信→日別取得→テスト件数の削除→ゼロ件確認を行います。
+- スクリプトの入力は環境変数 `HIKONE_ANALYTICS_TEST_BASE_URL`、`HIKONE_ANALYTICS_TEST_RUN`、`HIKONE_ANALYTICS_ADMIN_TOKEN`、`HIKONE_ALLOWED_ORIGIN` です。保護されたPreviewでは別途 `VERCEL_AUTOMATION_BYPASS_SECRET` が必要です。トークンをURLやログに出力しません。
+- 削除は認証付き `DELETE /api/analytics-report?day=YYYY-MM-DD` で、そのPreviewに設定された実行ID・指定日の許可済み18イベントキーだけを対象にします。キー名・名前空間はリクエストから指定できません。Productionでは405です。
+- スクリプトは成功・失敗のどちらでも削除を試みます。失敗した場合は報告し、24時間のTTLも最終的な回収手段になります。別の利用者と同じ実行IDを共有せず、並列実行しないでください。
+
+### 秘密値を取り出さないPreviewビルド内検証
+Preview限定で `node scripts/verify-analytics-storage.mjs` を実行できます。Vercelに適用済みのRedis接続を使い、同じ収集・レポートハンドラで実Redisを検証します。管理認証には検証プロセス内だけのランダムな一時トークンを使い、保存済みの管理トークンは変更しません。実Redisの件数をダッシュボードのJavaScriptへ渡し、7日分の行・棒グラフ・CSV生成もDOM上で検証します（実ブラウザの画面確認とは別です）。終了時にテストイベントキーを削除し、ゼロ件を再取得します。研究用キーは比較のための読み取りのみです。
+
+ビルド内の実接続検証は、対象Previewブランチだけに `HIKONE_ANALYTICS_VERIFY_STORAGE=1` を設定した場合に実行します。本番には設定しません。通常のビルドはこの検証を実行しません。
