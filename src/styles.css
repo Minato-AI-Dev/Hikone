@@ -42,3 +42,8 @@ button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #70
 .time-summary{display:flex;align-items:center;justify-content:space-between;gap:14px;border-top:1px solid #d6e0d9;margin-top:20px;padding-top:16px;color:#263b32;font-size:15px;line-height:1.6}
 .time-summary strong{white-space:nowrap;font-size:25px;font-variant-numeric:tabular-nums}
 @media(max-width:380px){.time-summary{font-size:13px;gap:8px}.time-summary strong{font-size:22px}}
+
+.research-explanation{font-size:14px;color:#49473f;line-height:1.85}
+.research-explanation h2{font-family:inherit;font-size:16px;line-height:1.5;margin:22px 0 8px;color:#263b32}
+.research-explanation p{margin:8px 0 14px}
+.research-explanation a{color:#365d4a;text-underline-offset:3px}
