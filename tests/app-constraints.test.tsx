@@ -90,3 +90,20 @@ it('shows only additional time and total time on cards and details',async()=>{
  expect(screen.getByText('約40分')).toBeTruthy();
  expect(document.body.textContent).not.toMatch(/へ直行|追加で歩く時間|体験と計画の余裕|追加で歩く距離|961/);
 });
+
+it('explains the research briefly before the choice and offers details without collecting events',()=>{
+ render(<App/>);
+ expect(screen.getByText('このアプリが、彦根の寄り道を楽しむきっかけになるかを調べています。')).toBeTruthy();
+ expect(screen.getByRole('button',{name:'協力してはじめる'})).toBeTruthy();
+ expect(screen.getByRole('button',{name:'協力せずにはじめる'})).toBeTruthy();
+ const summary=screen.getByText('調査の詳細（目的・集める情報・お問い合わせ）',{selector:'summary'});
+ expect(summary.closest('details')?.open).toBe(false);
+ fireEvent.click(summary);
+ expect(summary.closest('details')?.open).toBe(true);
+ expect(screen.getByRole('heading',{name:'何のための調査ですか？'})).toBeTruthy();
+ expect(screen.getByRole('heading',{name:'何を集めますか？'})).toBeTruthy();
+ expect(screen.getByRole('heading',{name:'運営・お問い合わせ'})).toBeTruthy();
+ expect(screen.getByText(/利用した人数ではありません/)).toBeTruthy();
+ expect(screen.getByText(/個別に取り消すことはできません/)).toBeTruthy();
+ expect(fetch).not.toHaveBeenCalled();
+});

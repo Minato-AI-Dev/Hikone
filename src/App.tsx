@@ -5,6 +5,7 @@ import { addValidation, completeExperience, historyIsTemporary, loadHistory, sta
 import { nodeOptions } from './lib/recommend';
 import { track, hasAnalyticsConsent, setAnalyticsConsent, hasAnalyticsChoice, recordAnalyticsChoice } from './lib/analytics';
 import { visitorStory } from './data/visitorStories';
+import ResearchExplanation from './ResearchExplanation';
 import { autoRecommend } from './lib/walkingRoutes';
 
 type Screen='home'|'questions'|'results'|'detail'|'go'|'done';
@@ -87,14 +88,15 @@ export default function App(){
    {temporaryHistory&&<p className="note" role="status">この端末には記録を保存できませんが、このまま利用できます。タブを閉じると今回の記録は失われます。</p>}
    {needsConsentChoice?<section className="consent-intro" aria-labelledby="consent-title">
     <p className="eyebrow">ようこそ、彦根へ</p>
-    <h1 id="consent-title">観光の調査に<br/>協力しますか？</h1>
-    <p>よりよい観光案内のため、おすすめを見た回数や、選んだ回数を匿名で集計します。</p>
+    <h1 id="consent-title">観光案内の調査に<br/>協力しますか？</h1>
+    <p>このアプリが、彦根の寄り道を楽しむきっかけになるかを調べています。</p>
+    <p>協力いただける場合、おすすめを見た回数や選んだ回数などを、匿名で集計します。</p>
     <p className="note">名前や位置情報は調査の集計に送りません。協力は自由で、あとから変更できます。協力しなくても、同じように使えます。</p>
     <div className="consent-options">
      <button className="secondary" onClick={()=>chooseResearch(true)}>協力してはじめる</button>
      <button className="secondary" onClick={()=>chooseResearch(false)}>協力せずにはじめる</button>
     </div>
-    <details className="research-details"><summary>調査について詳しく見る</summary><p className="note">同意中は操作の種類だけを送信し、日別の回数として保存します。個人を特定する情報や自由入力の内容は送りません。協力をやめると、それ以降の送信を停止します。すでに集計した回数は個人と結び付いていないため、あとから取り消せません。</p></details>
+    <ResearchExplanation/>
    </section>:<>
    {screen==='home'&&<section className="hero cardless">
     <p className="eyebrow">次の彦根</p>
