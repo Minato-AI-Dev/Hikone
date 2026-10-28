@@ -29,3 +29,14 @@ jobs:
           VITE_WALKING_ROUTE_ENDPOINT: https://routing-ci.example/api/walking-routes
         run: npm run build:pages
 
+
+  dependency-repair:
+    if: github.head_ref == 'fix/audit-hardening'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Regenerate lockfile for pinned patched dependencies
+        run: node scripts/prepare-dependency-repair.mjs
