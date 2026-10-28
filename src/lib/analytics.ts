@@ -21,6 +21,14 @@ export type AnalyticsEvent =
 
 const STORAGE_KEY = 'hikone-field-events-v1';
 const CONSENT_KEY = 'hikone-field-consent-v1';
+const CHOICE_KEY='hikone-research-choice-v2';
+export function hasAnalyticsChoice():boolean {
+  try{return localStorage.getItem(CHOICE_KEY)==='answered';}catch{return false;}
+}
+export function recordAnalyticsChoice(enabled:boolean):void {
+  setAnalyticsConsent(enabled);
+  try{localStorage.setItem(CHOICE_KEY,'answered');}catch{ /* Choice still works for this visit. */ }
+}
 const AGGREGATE_EVENTS=new Set<string>([
 'app_open','questionnaire_started','questionnaire_completed','recommendation_viewed','recommendation_selected',
 'experience_started','navigation_clicked','experience_completed','experience_not_completed','second_experience_selected',
