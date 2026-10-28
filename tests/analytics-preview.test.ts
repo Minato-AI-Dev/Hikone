@@ -7,9 +7,10 @@ import {reserveBudget} from '../server/rateLimit';
 const run='test-ci-isolated-20261028',token='unit-test-token-not-a-secret-12345678';
 const response=()=>({code:200,body:{} as any,headers:{} as Record<string,string>,setHeader(k:string,v:string){this.headers[k]=v;},status(n:number){this.code=n;return this;},json(b:unknown){this.body=b;return this;},end(b?:string){this.body=b;return this;}});
 const request=(body:unknown={event:'recommendation_viewed'})=>({method:'POST',headers:{origin:'https://frontend.example','content-type':'application/json','x-vercel-forwarded-for':'192.0.2.1'},body});
-const read=(day='2026-10-28',method='GET',auth=token)=>({method,headers:{authorization:'Bearer '+auth},query:{day}});
+const read=(day='2026-10-28',method='GET',auth=token)=>({method,headers:{authorization:'Bearer '+auth,'x-vercel-forwarded-for':'192.0.2.1'},query:{day}});
 let counters:Map<string,number>,commands:any[][];
 beforeEach(()=>{
+ vi.stubEnv('HIKONE_ANALYTICS_END_AT','');
  vi.stubEnv('VERCEL_ENV','preview');vi.stubEnv('HIKONE_ANALYTICS_TEST_RUN',run);
  vi.stubEnv('HIKONE_ANALYTICS_ADMIN_TOKEN',token);vi.stubEnv('HIKONE_ALLOWED_ORIGIN','https://frontend.example');
  vi.stubEnv('UPSTASH_REDIS_REST_URL','');vi.stubEnv('UPSTASH_REDIS_REST_TOKEN','');
@@ -21,6 +22,7 @@ beforeEach(()=>{
   if(cmd[0]==='EVAL'&&cmd[2]==='1'){result=(counters.get(cmd[3])??0)+1;counters.set(cmd[3],result as number);}
   else if(cmd[0]==='EVAL')result=1;
   else if(cmd[0]==='INCR'){result=(counters.get(cmd[1])??0)+1;counters.set(cmd[1],result as number);}
+  else if(cmd[0]==='MGET')result=cmd.slice(1).map((k:string)=>counters.get(k)??null);
   else if(cmd[0]==='GET')result=counters.get(cmd[1])??null;
   else if(cmd[0]==='DEL'){result=cmd.slice(1).filter((k:string)=>counters.delete(k)).length;}
   else throw new Error('Unexpected Redis command');
@@ -69,7 +71,7 @@ describe('isolated preview analytics',()=>{
  });
  it('does not let query parameters choose another namespace',async()=>{
   const r=response();await report({...read('2026-10-28','DELETE'),query:{day:'2026-10-28',testRun:'research',key:'hikone:aggregate:v1:*'}},r);
-  expect(r.code).toBe(200);expect(commands[0].slice(1).every(k=>k.startsWith('hikone:aggregate:test:v1:'+run+':'))).toBe(true);
+  expect(r.code).toBe(200);expect(commands.find(cmd=>cmd[0]==='DEL')!.slice(1).every(k=>k.startsWith('hikone:aggregate:test:v1:'+run+':'))).toBe(true);
  });
  it('returns a controlled storage error on cleanup failure',async()=>{
   vi.mocked(fetch).mockRejectedValue(new Error('do not expose secret'));
@@ -92,4 +94,31 @@ describe('isolated preview analytics',()=>{
  it('retains origin rejection',async()=>{
   const q=request();q.headers.origin='https://other.example';const r=response();await collect(q,r);expect(r.code).toBe(403);expect(fetch).not.toHaveBeenCalled();
  });
+});
+
+it('stops collecting at the configured end date before touching Redis',async()=>{
+ vi.stubEnv('HIKONE_ANALYTICS_END_AT','2020-01-01T00:00:00+09:00');
+ const r=response();await collect(request(),r);expect(r.code).toBe(410);expect(fetch).not.toHaveBeenCalled();
+});
+it('gets all report counts in a single Redis batch',async()=>{
+ const r=response();await report(read(),r);expect(r.code).toBe(200);
+ expect(commands.filter(c=>c[0]==='MGET')).toHaveLength(1);expect(commands.filter(c=>c[0]==='GET')).toHaveLength(0);
+});
+it('limits authenticated report reads before fetching counters',async()=>{
+ vi.mocked(fetch).mockResolvedValueOnce({ok:true,json:async()=>({result:0})} as Response);
+ const r=response();await report(read(),r);expect(r.code).toBe(429);expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it('rejects an invalid collection cutoff without writing Redis',async()=>{
+ vi.stubEnv('HIKONE_ANALYTICS_END_AT','invalid');
+ const r=response();await collect(request(),r);expect(r.code).toBe(503);expect(fetch).not.toHaveBeenCalled();
+});
+it('respects a configured route budget without changing the defaults for other services',async()=>{
+ vi.stubEnv('HIKONE_ROUTES_DAILY_BUDGET','600');vi.stubEnv('HIKONE_ROUTES_MINUTE_BUDGET','200');
+ expect(await reserveBudget(request(),'routes',17)).toBe('allowed');
+ expect(commands[0].slice(-4)).toEqual([6,200,600,17]);
+});
+it('fails closed for an invalid paid API budget',async()=>{
+ vi.stubEnv('HIKONE_ROUTES_DAILY_BUDGET','-1');
+ expect(await reserveBudget(request(),'routes',1)).toBe('unavailable');expect(fetch).not.toHaveBeenCalled();
 });

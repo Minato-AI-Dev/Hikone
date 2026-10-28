@@ -17,7 +17,7 @@ const res=()=>({code:200,body:null,headers:{},setHeader(k,v){this.headers[k]=v;}
 let collect,report,metricKey,redisCommand,AGGREGATE_EVENTS,day;
 const touchedDays=new Set();
 let cleanupRequired=false,checks=0;
-const req=(method='GET',token=process.env.HIKONE_ANALYTICS_ADMIN_TOKEN)=>({method,headers:{authorization:'Bearer '+token},query:{day}});
+const req=(method='GET',token=process.env.HIKONE_ANALYTICS_ADMIN_TOKEN)=>({method,headers:{authorization:'Bearer '+token,'x-vercel-forwarded-for':'192.0.2.1'},query:{day}});
 const check=(condition,message)=>{assert.ok(condition,message);checks++;};
 async function readReport(){const r=res();await report(req(),r);assert.equal(r.code,200);assert.equal(r.body.testRun,run);return r.body.counts;}
 try{
@@ -56,7 +56,7 @@ try{
  const dom=new JSDOM(html.body.replace(/<script>[\s\S]*?<\/script>/,''),{url:'https://test.example/api/analytics-dashboard',runScripts:'outside-only'});
  let blob,downloaded=false;
  dom.window.fetch=async(url,options)=>{
-  const request={method:'GET',headers:{authorization:options.headers.Authorization},query:{day:new URL(url,'https://test.example').searchParams.get('day')}};
+  const request={method:'GET',headers:{authorization:options.headers.Authorization,'x-vercel-forwarded-for':'192.0.2.1'},query:{day:new URL(url,'https://test.example').searchParams.get('day')}};
   const r=res();await report(request,r);return {status:r.code,ok:r.code===200,json:async()=>r.body};
  };
  dom.window.Blob=Blob;dom.window.URL.createObjectURL=value=>{blob=value;return 'blob:test';};dom.window.URL.revokeObjectURL=()=>{};

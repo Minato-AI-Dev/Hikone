@@ -19,6 +19,7 @@ export type AnalyticsEvent =
   | 'hikone_ai_started'
   | 'hikone_ai_completed';
 
+let collectionEnded=false;
 const STORAGE_KEY = 'hikone-field-events-v1';
 const CONSENT_KEY = 'hikone-field-consent-v1';
 const CHOICE_KEY='hikone-research-choice-v2';
@@ -63,11 +64,13 @@ export function track(event:AnalyticsEvent, data:Record<string,unknown>={}):void
 }
 
 function sendAggregateEvent(event:AnalyticsEvent):void {
-  if(!hasAnalyticsConsent()||!AGGREGATE_EVENTS.has(event))return;
+  if(collectionEnded||!hasAnalyticsConsent()||!AGGREGATE_EVENTS.has(event))return;
   const endpoint=import.meta.env.VITE_ANALYTICS_COLLECT_ENDPOINT?.trim() || (import.meta.env.DEV?'/api/analytics-collect':'');
   if(!endpoint)return;
   // No raw details, identifying IDs, GPS or free-form content leave the browser.
-  void fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({event}),keepalive:true}).catch(()=>{});
+  void fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({event}),keepalive:true})
+    .then(response=>{if(response.status===410){collectionEnded=true;return;}if(!response.ok)console.warn('Anonymous analytics delivery failed: HTTP '+response.status);})
+    .catch(()=>{console.warn('Anonymous analytics delivery failed: network unavailable');});
 }
 
 export function downloadAnalytics():void {

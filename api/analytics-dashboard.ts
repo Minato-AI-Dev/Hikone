@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { ApiRequest,ApiResponse } from '../server/http.js';
 import { analyticsTestRun } from '../server/aggregateAnalytics.js';
 // Static UI is public; all report data requires a separate authenticated request.
@@ -7,7 +8,9 @@ export default function handler(req:ApiRequest,res:ApiResponse){
   res.setHeader('Cache-Control','no-store');
   res.setHeader('X-Content-Type-Options','nosniff');
   res.setHeader('Referrer-Policy','no-referrer');
-  res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+  const script=HTML.match(/<script>([\s\S]*?)<\/script>/)?.[1]??'';
+  const hash=createHash('sha256').update(script).digest('base64');
+  res.setHeader('Content-Security-Policy',`default-src 'none'; script-src 'sha256-${hash}'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
   if(req.method!=='GET')return res.status(405).json({error:'Method not allowed'});
   let testRun:string|null;
   try{testRun=analyticsTestRun();}catch{return res.status(503).json({error:'Dashboard unavailable'});}
