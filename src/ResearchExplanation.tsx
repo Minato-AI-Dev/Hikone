@@ -15,7 +15,7 @@ export default function ResearchExplanation(){
    <h2>通常のアプリ利用で扱う情報は？</h2>
    <p>調査への協力とは別に、寄り道の履歴と希望はこの端末に保存します。経路案内や地図の表示では外部サービスと通信し、配信事業者では通常の通信ログが扱われる場合があります。詳しくは<a href={import.meta.env.BASE_URL+'privacy.html'} target="_blank" rel="noopener noreferrer">プライバシーについて</a>をご覧ください。</p>
    <h2>運営・お問い合わせ</h2>
-   <p>運営：Minato-AI-Dev / Hikone。ご質問は<a href="https://github.com/Minato-AI-Dev/Hikone/issues" target="_blank" rel="noopener noreferrer">お問い合わせページ</a>へお願いします。公開されるページなので、名前・連絡先などの個人情報は書き込まないでください。</p>
+   <p>運営：Minato-AI-Dev / Hikone。ご質問は<a href="mailto:s2023340@st.shiga-u.ac.jp">s2023340@st.shiga-u.ac.jp</a>へお願いします。調査への協力についてのご質問もこちらへお送りください。</p>
   </div>
  </details>;
 }
