@@ -3,7 +3,7 @@ import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import App from '../src/App';
 import {autoRecommend} from '../src/lib/walkingRoutes';
-vi.mock('../src/lib/walkingRoutes',()=>({autoRecommend:vi.fn(async()=>({recommendations:[],source:'unavailable',warning:'internal routing diagnostics'}))}));
+vi.mock('../src/lib/walkingRoutes',()=>({autoRecommend:vi.fn(async()=>({recommendations:[],source:'unavailable',warning:'現在、徒歩経路を取得できません。'}))}));
 beforeEach(()=>{localStorage.clear();vi.clearAllMocks();vi.stubGlobal('fetch',vi.fn(async()=>({ok:true})));});
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 it('lets visitors set and then clear a walking cap in the single questionnaire',async()=>{

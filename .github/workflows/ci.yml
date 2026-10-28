@@ -22,10 +22,8 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm ci
-      - name: Test
-        run: npm test
-      - name: Backend types
-        run: npm run typecheck:api
+      - name: Dependency audit, tests and backend types
+        run: node scripts/check-release.mjs
       - name: Build
         env:
           VITE_WALKING_ROUTE_ENDPOINT: https://routing-ci.example/api/walking-routes

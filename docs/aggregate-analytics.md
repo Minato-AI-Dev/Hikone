@@ -36,7 +36,7 @@ curl -H "Authorization: Bearer $HIKONE_ANALYTICS_ADMIN_TOKEN" \
 - トークンをURL、ローカルストレージ、Cookieには保存しません。ページのメモリに限り保持します。
 - レポートAPIを同じVercelドメインで呼び出す設計のため、GitHub Pages側のAPIキーやCORS変更は不要です。
 - セキュリティヘッダーを設定し、画面には集計値のみに限定した静的コンテンツを使用します。
-- 日別件数の閲覧APIを7回呼ぶため、RedisのGETを最大126件実行します。アクセスは管理者用途に限定してください。
+- 日別件数の閲覧APIを7回呼ぶため、RedisのMGETを7回実行します。アクセスは管理者用途に限定してください。
 
 ## 本番データを汚さない実接続テスト
 - Previewに限り `HIKONE_ANALYTICS_TEST_RUN=test-<一意な実行ID>` を設定します（小文字英数字・ハイフン、`test-` の後は8〜64文字）。

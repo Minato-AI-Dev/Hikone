@@ -56,3 +56,11 @@ export async function incrementMetric(day:string,event:AggregateEvent):Promise<u
     ?['EVAL',"local n=redis.call('INCR',KEYS[1]); redis.call('EXPIRE',KEYS[1],86400); return n",'1',key]
     :['INCR',key]);
 }
+
+export function analyticsCollectionOpen(now=new Date()):boolean {
+ const end=process.env.HIKONE_ANALYTICS_END_AT;
+ if(!end)return true;
+ const deadline=Date.parse(end);
+ if(!Number.isFinite(deadline))throw new Error('Invalid analytics collection deadline');
+ return now.getTime()<deadline;
+}

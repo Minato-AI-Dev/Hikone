@@ -1,3 +1,4 @@
+import { reserveBudget } from '../server/rateLimit.js';
 import { timingSafeEqual } from 'node:crypto';
 import { header,type ApiRequest,type ApiResponse } from '../server/http.js';
 import { AGGREGATE_EVENTS,metricKey,redisCommand,analyticsTestRun } from '../server/aggregateAnalytics.js';
@@ -23,11 +24,14 @@ export default async function handler(req:ApiRequest,res:ApiResponse){
   if(!/^20\d{2}-(0[1-9]|1[0-2])-([0-2]\d|3[01])$/.test(day)||!Number.isFinite(parsedDay.getTime())||parsedDay.toISOString().slice(0,10)!==day)
     return res.status(400).json({error:'Use day=YYYY-MM-DD'});
   try{
+    const budget=await reserveBudget(req,'report',1);
+    if(budget!=='allowed')return res.status(budget==='limited'?429:503).json({error:'Report unavailable'});
     if(req.method==='DELETE'){
       const removed=await redisCommand(['DEL',...AGGREGATE_EVENTS.map(e=>metricKey(day,e))]);
       return res.status(200).json({day,testRun,removed});
     }
-    const values=await Promise.all(AGGREGATE_EVENTS.map(e=>redisCommand(['GET',metricKey(day,e)])));
+    const values=await redisCommand(['MGET',...AGGREGATE_EVENTS.map(e=>metricKey(day,e))]);
+    if(!Array.isArray(values)||values.length!==AGGREGATE_EVENTS.length)throw new Error('Invalid report result');
     return res.status(200).json({day,...(testRun?{testRun}:{}),counts:Object.fromEntries(AGGREGATE_EVENTS.map((event,i)=>[event,Number(values[i]??0)]))});
   }catch{return res.status(503).json({error:'Report unavailable'});}
 }
