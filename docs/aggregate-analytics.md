@@ -50,3 +50,6 @@ curl -H "Authorization: Bearer $HIKONE_ANALYTICS_ADMIN_TOKEN" \
 - スクリプトの入力は環境変数 `HIKONE_ANALYTICS_TEST_BASE_URL`、`HIKONE_ANALYTICS_TEST_RUN`、`HIKONE_ANALYTICS_ADMIN_TOKEN`、`HIKONE_ALLOWED_ORIGIN` です。保護されたPreviewでは別途 `VERCEL_AUTOMATION_BYPASS_SECRET` が必要です。トークンをURLやログに出力しません。
 - 削除は認証付き `DELETE /api/analytics-report?day=YYYY-MM-DD` で、そのPreviewに設定された実行ID・指定日の許可済み18イベントキーだけを対象にします。キー名・名前空間はリクエストから指定できません。Productionでは405です。
 - スクリプトは成功・失敗のどちらでも削除を試みます。失敗した場合は報告し、24時間のTTLも最終的な回収手段になります。別の利用者と同じ実行IDを共有せず、並列実行しないでください。
+
+### 秘密値を取り出さないPreviewビルド内検証
+Preview限定で `node scripts/verify-analytics-storage.mjs` を実行できます。Vercelに適用済みのRedis接続を使い、同じ収集・レポートハンドラで実Redisを検証します。管理認証には検証プロセス内だけのランダムな一時トークンを使い、保存済みの管理トークンは変更しません。実Redisの件数をダッシュボードのJavaScriptへ渡し、7日分の行・棒グラフ・CSV生成もDOM上で検証します（実ブラウザの画面確認とは別です）。終了時にテストイベントキーを削除し、ゼロ件を再取得します。研究用キーは比較のための読み取りのみです。
