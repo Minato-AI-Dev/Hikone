@@ -108,3 +108,17 @@ it('limits authenticated report reads before fetching counters',async()=>{
  vi.mocked(fetch).mockResolvedValueOnce({ok:true,json:async()=>({result:0})} as Response);
  const r=response();await report(read(),r);expect(r.code).toBe(429);expect(fetch).toHaveBeenCalledTimes(1);
 });
+
+it('rejects an invalid collection cutoff without writing Redis',async()=>{
+ vi.stubEnv('HIKONE_ANALYTICS_END_AT','invalid');
+ const r=response();await collect(request(),r);expect(r.code).toBe(503);expect(fetch).not.toHaveBeenCalled();
+});
+it('respects a configured route budget without changing the defaults for other services',async()=>{
+ vi.stubEnv('HIKONE_ROUTES_DAILY_BUDGET','600');vi.stubEnv('HIKONE_ROUTES_MINUTE_BUDGET','200');
+ expect(await reserveBudget(request(),'routes',17)).toBe('allowed');
+ expect(commands[0].slice(-4)).toEqual([6,200,600,17]);
+});
+it('fails closed for an invalid paid API budget',async()=>{
+ vi.stubEnv('HIKONE_ROUTES_DAILY_BUDGET','-1');
+ expect(await reserveBudget(request(),'routes',1)).toBe('unavailable');expect(fetch).not.toHaveBeenCalled();
+});
