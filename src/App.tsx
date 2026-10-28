@@ -7,6 +7,7 @@ import { track, hasAnalyticsConsent, setAnalyticsConsent, hasAnalyticsChoice, re
 import { visitorStory } from './data/visitorStories';
 import ResearchExplanation from './ResearchExplanation';
 import { autoRecommend } from './lib/walkingRoutes';
+import { filmLocations } from './data/filmLocations';
 
 type Screen='home'|'questions'|'results'|'detail'|'go'|'done';
 const defaultAnswers:Answers={currentNodeId:'S01',finalNodeId:'D01',remainingTimeMin:35,interestTagIds:[],availableMode:'徒歩',maxWalkMin:null,detourPreference:'少しなら',discoveryOptIn:true,firstVisit:true,walkingPace:'standard',walkingConditions:'normal'};
@@ -132,6 +133,7 @@ export default function App(){
         Google Mapsで経路を見る ↗
       </a>
     </div>)}</div>
+    {answers.interestTagIds.some(t=>['T_PHOTO','T_HISTORY'].includes(t))&&<section className="film-recommendations"><h3>映画ロケ地の寄り道候補</h3><p className="note">公開観覧地点への立ち寄り案です。徒歩時間・帰着時刻は計算していません。撮影時のカメラ位置には入れない場合があります。彦根城・玄宮園・博物館は入場条件と開場時間をご確認ください。</p><div className="cards">{filmLocations.filter(p=>p.recommendationEligible&&p.accessibleVerified).slice(0,8).map(p=><article key={p.id} className="result-card"><h3>{p.name}</h3><p>作品：{p.works.join('、')}</p><p>観覧地点：{p.visitorWaypoint}</p><p className="note">{p.accessScope}</p><a className="result-map-link" href={'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent((p.visitorWaypoint||p.name)+' 彦根市')} target="_blank" rel="noopener noreferrer">公開観覧地点を地図で検索 ↗</a><a className="story-source" href={p.source} target="_blank" rel="noopener noreferrer">撮影場所の出典 ↗</a></article>)}</div></section>}
     <button className="secondary" onClick={beginQuestions}>条件を変える</button>
    </section>}
 
