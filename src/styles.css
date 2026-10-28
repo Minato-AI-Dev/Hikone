@@ -21,3 +21,15 @@
 
 .story-source{display:block;color:#53675c;font-size:12px;text-decoration:underline;text-underline-offset:3px;padding:11px 16px;line-height:1.5;background:#faf9f6}.story-source:hover{color:#263b32}.catalog-item .story-source{padding:8px 0 10px;background:transparent}
 .maps-attribution{font-family:Roboto,sans-serif;font-size:14px;font-weight:400;color:#1f1f1f;white-space:nowrap;letter-spacing:normal}
+
+/* One visitor journey, with an explicit and optional research choice first. */
+.app{padding-bottom:30px}
+.consent-intro{margin-top:12px}
+.consent-intro h1{font-size:clamp(30px,7vw,44px)}
+.consent-options{display:grid;gap:12px;margin-top:24px}
+.consent-options .secondary{margin:0;text-align:center;min-height:54px}
+.research-details,.research-settings{margin-top:24px;font-size:13px;color:#746e64;line-height:1.8}
+.research-details summary,.research-settings summary{cursor:pointer;padding:10px 0}
+.research-settings .link{width:auto;text-align:left;padding-left:0}
+button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #708c7a;outline-offset:3px}
+@media(min-width:540px){.consent-options{grid-template-columns:1fr 1fr}}

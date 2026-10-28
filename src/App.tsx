@@ -1,17 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { actions, nodeById, tagNames } from './data/dbV4';
-import { Answers, HistoryState, Recommendation, ResearchCandidate } from './types';
-import { addValidation, completeExperience, lastCompletedId, loadHistory, startExperience } from './lib/history';
-import { dbStats, knownActionCount, nodeOptions, recommend, researchCandidates, researchNodeCount } from './lib/recommend';
-import { track, downloadAnalytics, hasAnalyticsConsent, setAnalyticsConsent } from './lib/analytics';
-import HikoneAI from './HikoneAI';
-import DestinationCatalog from './DestinationCatalog';
+import { useEffect, useRef, useState } from 'react';
+import { nodeById, tagNames } from './data/dbV4';
+import { Answers, HistoryState, Recommendation } from './types';
+import { addValidation, completeExperience, loadHistory, startExperience } from './lib/history';
+import { nodeOptions } from './lib/recommend';
+import { track, hasAnalyticsConsent, setAnalyticsConsent, hasAnalyticsChoice, recordAnalyticsChoice } from './lib/analytics';
 import { visitorStory } from './data/visitorStories';
 import { autoRecommend } from './lib/walkingRoutes';
 
-type Screen='home'|'ai'|'questions'|'results'|'detail'|'go'|'done'|'history'|'catalog';
+type Screen='home'|'questions'|'results'|'detail'|'go'|'done';
 const defaultAnswers:Answers={currentNodeId:'S01',finalNodeId:'D01',remainingTimeMin:35,interestTagIds:[],availableMode:'徒歩',maxWalkMin:null,detourPreference:'少しなら',discoveryOptIn:true,firstVisit:true,walkingPace:'standard',walkingConditions:'normal'};
-const debugMode=new URLSearchParams(window.location.search).get('debug')==='1';
 type GPSPosition={lat:number;lng:number;accuracy:number};
 function getGps():Promise<GPSPosition>{
  return new Promise((resolve,reject)=>{
@@ -26,6 +23,7 @@ function getGps():Promise<GPSPosition>{
 
 export default function App(){
  const [history,setHistory]=useState<HistoryState|null>(()=>loadHistory());
+ const [needsConsentChoice,setNeedsConsentChoice]=useState(()=>!hasAnalyticsChoice());
  const [analyticsConsent,setConsent]=useState<boolean>(()=>hasAnalyticsConsent());
  const [screen,setScreenState]=useState<Screen>('home');
  const pendingRoute=useRef<AbortController|null>(null);
@@ -34,12 +32,9 @@ export default function App(){
  const [step,setStep]=useState(0);
  const [answers,setAnswers]=useState<Answers>(defaultAnswers);
  const [recs,setRecs]=useState<Recommendation[]>([]);
- const [research,setResearch]=useState<ResearchCandidate[]>([]);
  const [selected,setSelected]=useState<Recommendation|null>(null);
  const [helpful,setHelpful]=useState<'great'|'okay'|'not'>('great');
  const [counter,setCounter]=useState<'no'|'probablyNo'|'yes'>('probablyNo');
- const [aiIntro,setAiIntro]=useState<string|null>(null);
- const [aiSource,setAiSource]=useState<'ai'|'fallback'|null>(null);
  const [gps,setGps]=useState<GPSPosition|null>(null);
  const [gpsBusy,setGpsBusy]=useState(false);
  const [gpsError,setGpsError]=useState('');
@@ -57,8 +52,10 @@ export default function App(){
   finally{setGpsBusy(false);}
  };
 
- useEffect(()=>{track('app_open');if(history)track('returning_user_detected')},[]);
- const last=useMemo(()=>actions.find(a=>a.id===lastCompletedId(history)),[history]);
+ useEffect(()=>{
+  if(needsConsentChoice){setAnalyticsConsent(false);return;}
+  track('app_open');if(history)track('returning_user_detected');
+ },[needsConsentChoice]);
  const currentName=nodeById(answers.currentNodeId)?.name||answers.currentNodeId;
  const finalName=nodeById(answers.finalNodeId)?.name||answers.finalNodeId;
 
@@ -71,57 +68,51 @@ export default function App(){
    setRoutingSource(result.source);
    setRoutingBusy(false);
    setRecs(r);
-   setResearch(debugMode?researchCandidates(a):[]);
-   setAiIntro(null);
-   setAiSource(null);
+   
+   
    setScreen('results');
    track('recommendation_viewed',{count:r.length,currentNodeId:a.currentNodeId,finalNodeId:a.finalNodeId});
  };
- const beginQuestions=()=>{setStep(0);setAiIntro(null);setAiSource(null);setAnswers(a=>({...a,firstVisit:!history}));setScreen('questions');track('questionnaire_started')};
- const beginAI=()=>{setAiIntro(null);setAiSource(null);setScreen('ai');track('hikone_ai_opened')};
+ const beginQuestions=()=>{setStep(0);setAnswers(a=>({...a,firstVisit:!history}));setScreen('questions');track('questionnaire_started')};
  const selectRec=(r:Recommendation)=>{setSelected(r);setScreen('detail');track('recommendation_selected',{id:r.id,detourMinutes:r.detourMinutes})};
  const beginExperience=()=>{if(!selected)return;const h=startExperience({experienceId:selected.actionId,startedAt:new Date().toISOString(),completed:false},answers);setHistory(h);setScreen('go');track('experience_started',{id:selected.actionId,detourMinutes:selected.detourMinutes})};
  const markCompleted=(ok:boolean)=>{if(!selected)return;if(ok){const h=completeExperience(selected.actionId);setHistory(h);setScreen('done');track('experience_completed',{id:selected.actionId,method:'manual'})}else{setScreen('home');track('experience_not_completed',{id:selected.actionId})}};
- const reset=()=>{setSelected(null);setRecs([]);setResearch([]);setAiIntro(null);setScreen('home')};
+ const reset=()=>{setSelected(null);setRecs([]);setScreen('home')};
 
+ const chooseResearch=(enabled:boolean)=>{
+  recordAnalyticsChoice(enabled);setConsent(enabled);setNeedsConsentChoice(false);beginQuestions();
+ };
  return <div className="app">
-  <header className="top">
-   <button className="brand" onClick={reset}>次の彦根</button>
-   <span className="demo">{debugMode?'DEBUG':'DEMO'}</span>
-  </header>
+  <header className="top"><button className="brand" onClick={reset} disabled={needsConsentChoice}>次の彦根</button></header>
   <main>
+   {needsConsentChoice?<section className="consent-intro" aria-labelledby="consent-title">
+    <p className="eyebrow">ようこそ、彦根へ</p>
+    <h1 id="consent-title">観光の調査に<br/>協力しますか？</h1>
+    <p>よりよい観光案内のため、おすすめを見た回数や、選んだ回数を匿名で集計します。</p>
+    <p className="note">名前や位置情報は調査の集計に送りません。協力は自由で、あとから変更できます。協力しなくても、同じように使えます。</p>
+    <div className="consent-options">
+     <button className="secondary" onClick={()=>chooseResearch(true)}>協力してはじめる</button>
+     <button className="secondary" onClick={()=>chooseResearch(false)}>協力せずにはじめる</button>
+    </div>
+    <details className="research-details"><summary>調査について詳しく見る</summary><p className="note">同意中は操作の種類だけを送信し、日別の回数として保存します。個人を特定する情報や自由入力の内容は送りません。協力をやめると、それ以降の送信を停止します。すでに集計した回数は個人と結び付いていないため、あとから取り消せません。</p></details>
+   </section>:<>
    {screen==='home'&&<section className="hero cardless">
-    <p className="eyebrow">HIKONE DETOUR</p>
+    <p className="eyebrow">次の彦根</p>
     <h1>あと少し、<br/>彦根に寄り道しませんか？</h1>
-    <p>今いる場所と帰る場所、残り時間に合わせて、今からできることを3つまで提案します。</p>
-    {last&&<p className="muted">前回は「{last.type}」を体験しました。</p>}
-    <button className="primary" onClick={beginQuestions}>選択肢から探す<span>5回ほどタップするだけです。</span></button>
-    <button className="secondary" onClick={()=>setScreen('catalog')}>彦根の行き先一覧を見る<span>歴史・ひこにゃん・写真・食などから探せます。</span></button>
-    <button className="secondary ai-entry" onClick={beginAI}>自由入力で相談する<span>細かい希望があるときはこちら。</span></button>
-    <p className="note">徒歩時間は推定です。経路を取得できず実測区間もない場合、時間内に行ける候補は表示できません。</p>
-    <label className="catalog-check"><input type="checkbox" checked={analyticsConsent} onChange={e=>{setConsent(e.target.checked);setAnalyticsConsent(e.target.checked);track('analytics_consent_changed',{enabled:e.target.checked})}}/> 実証調査に協力する（端末内の記録と、匿名の件数集計を送信）</label>
-    <p className="note">位置情報や自由入力本文は調査ログに含めません。同意中はイベント名のみを運営サーバーへ送信し、日別件数を集計します。個人の履歴は端末内に残ります。送信済みの集計件数は同意解除後も取り消せません。</p>
-    {analyticsConsent&&<button className="secondary" onClick={downloadAnalytics}>調査ログをCSVで保存する</button>}
-    {debugMode&&<DebugSummary/>}
+    <p>今いる場所と残り時間に合わせて、おすすめの寄り道を提案します。</p>
+    <button className="primary" onClick={beginQuestions}>寄り道を探す<span>6つの質問に答えるだけ</span></button>
    </section>}
-
-   {screen==='catalog'&&<DestinationCatalog onBack={()=>setScreen('home')}/>}
-
-   {screen==='ai'&&<HikoneAI answers={answers} history={history} onBack={()=>setScreen('home')} onResolved={(a,r,intro,source,routing)=>{
-     setAnswers(a);setRecs(r);setResearch(debugMode?researchCandidates(a):[]);setAiIntro(intro);setAiSource(source);setRoutingNotice(routing.warning);setRoutingSource(routing.source);setRoutingBusy(false);setScreen('results');
-   }}/>}
 
    {screen==='questions'&&<Questionnaire step={step} setStep={setStep} answers={answers} setAnswers={setAnswers} gps={gps} gpsBusy={gpsBusy} gpsError={gpsError} requestGps={requestGps} onDone={()=>{track('questionnaire_completed');run(answers)}}/>}
 
    {screen==='results'&&<section>
     <p className="eyebrow">今から行けるところ</p>
     <h2>{routingBusy?'徒歩経路を確認中…':recs.length?'このあたりがおすすめです':'今の条件では、寄り道なしが安心です'}</h2>
-    {routingNotice&&<p className="note" role="status">{routingNotice}</p>}
+    {routingBusy?<p className="note" role="status">歩いて行ける寄り道を探しています…</p>:<p className="note" role="status">{recs.length?'移動時間は目安です。余裕をもってお出かけください。':'条件を変えて、もう一度お試しください。'}</p>}
     {!routingBusy&&routingSource==='maps'&&<p className="maps-attribution" translate="no">Google Maps</p>}
-    {aiIntro&&<div className="ai-summary"><p>{aiIntro}</p></div>}
-    {gps&&<p className="gps-notice">Google Mapsの出発点には取得した現在地を使います。下の所要時間は選択した出発地点（{shortName(currentName)}）を基準とした参考値です。</p>}
+    {gps&&<p className="gps-notice">地図の道案内には現在地を使います。所要時間は{shortName(currentName)}からの目安です。</p>}
     <div className="route-context"><b>{shortName(currentName)}</b><span>→</span><b>{shortName(finalName)}</b><small>残り {answers.remainingTimeMin}分</small></div>
-    <p className="note">歩行ペース：{answers.walkingPace==='slow'?'休憩しながら':answers.walkingPace==='relaxed'?'ゆっくり':'普通'} ／ 状況：{answers.walkingConditions==='rain'?'雨・足元が悪い':answers.walkingConditions==='heat'?'暑い・疲れやすい':'通常'}{answers.maxWalkMin!==null?' ／ 徒歩は合計'+answers.maxWalkMin+'分まで':''}。読み取りが違う場合は条件を変更してください。</p>
+    <p className="note">歩行ペース：{answers.walkingPace==='slow'?'休憩しながら':answers.walkingPace==='relaxed'?'ゆっくり':'普通'} ／ 状況：{answers.walkingConditions==='rain'?'雨・足元が悪い':answers.walkingConditions==='heat'?'暑い・疲れやすい':'通常'}{answers.maxWalkMin!==null?' ／ 徒歩は合計'+answers.maxWalkMin+'分まで':''}。</p>
     {answers.interestTagIds.length>0&&<div className="selected-tags">{friendlySelectedTags(answers.interestTagIds).map(t=><span key={t}>{t}</span>)}</div>}
     {!routingBusy&&!recs.length&&<div className="strict-empty"><b>今回は無理に寄り道をおすすめしません。</b><p>残り時間が足りないか、必要な徒歩経路を取得できませんでした。帰る場所までの経路をGoogle Mapsで確認し、余裕を持って移動してください。</p></div>}
     <div className="cards">{recs.map(r=><div key={r.id} className="result-card">
@@ -132,7 +123,6 @@ export default function App(){
         <p className="experience-line">{friendlyAction(r.actionName)}</p>
         {r.matchingTags.length>0&&<p className="match-line">{r.matchingTags.join('・')}</p>}
         <p className="reason">{friendlyReason(r)}</p>
-        {r.reason&&<p className="match-line">{r.reason}</p>}
         <small>{shortName(finalName)}まで含めて 約{r.viaRouteMinutes}分{r.additionalDistanceM!==null?' / 追加約'+r.additionalDistanceM+'m':''}</small>
         <small>徒歩約{r.walkingMinutes}分（追加歩行約{r.additionalWalkingMinutes}分）・体験{r.experienceMinutes}分・余裕{r.safetyBufferMinutes}分</small>
       </button>
@@ -141,8 +131,6 @@ export default function App(){
         Google Mapsで経路を見る ↗
       </a>
     </div>)}</div>
-    {debugMode&&<DebugResults recs={recs} research={research}/>}
-    <button className="secondary" onClick={()=>setScreen('catalog')}>ほかの彦根の行き先も見る</button>
     <button className="secondary" onClick={beginQuestions}>条件を変える</button>
    </section>}
 
@@ -151,7 +139,6 @@ export default function App(){
     <div className="detail-detour">+{selected.detourMinutes}分</div>
     <h2>{friendlyNodeName(selected.nodeName)}</h2>
     <p>{friendlyReason(selected)}</p>
-    {selected.reason&&<p className="match-line">{selected.reason}</p>}
     {visitorStory(selected.nodeId,nodeById(selected.nodeId)?.category||'').source&&<a className="story-source" href={visitorStory(selected.nodeId,nodeById(selected.nodeId)?.category||'').source} target="_blank" rel="noopener noreferrer">このお話の参考資料を見る ↗</a>}
     <div className="mission"><small>ここですること</small><br/><b>{friendlyAction(selected.actionName)}</b></div>
     <MapEmbed placeName={selected.nodeName}/>
@@ -164,9 +151,8 @@ export default function App(){
       {selected.additionalDistanceM!==null&&<div><b>追加で歩く距離</b><span>約{selected.additionalDistanceM}m</span></div>}
     </div>
     <p className="route-result">帰る場所はそのまま。寄り道で <b>+{selected.detourMinutes}分</b> です。</p>
-    <p className="note">{selected.dataStatus}</p>
+    <p className="note">時間は目安です。開館時間や道の状況を確認してお出かけください。</p>
     {selected.dataStatus.includes('Google Maps')&&<p className="maps-attribution" translate="no">Google Maps</p>}
-    {debugMode&&<div className="debug-box"><b>Debug</b><p>{selected.dataStatus}</p><p>ID: {selected.id} / Layer: {selected.layer}</p></div>}
     <button className="primary" onClick={beginExperience}>ここに寄る</button>
     <button className="link" onClick={()=>setScreen('results')}>別の候補を見る</button>
    </section>}
@@ -186,20 +172,24 @@ export default function App(){
    {screen==='done'&&selected&&<section className="center">
     <p className="eyebrow">おかえりなさい</p>
     <h2>彦根を、ひとつ足せました。</h2>
-    <div className="validation">
+    {analyticsConsent&&<details className="validation"><summary>よければ感想を教えてください</summary>
       <p>このおすすめは役に立ちましたか？</p>
       <Choice value={helpful} setValue={setHelpful} options={[['great','とても役立った'],['okay','まあ役立った'],['not','あまり役立たなかった']]}/>
       <p>この提案がなければ、ここに行っていましたか？</p>
       <Choice value={counter} setValue={setCounter} options={[['no','行かなかったと思う'],['probablyNo','たぶん行かなかった'],['yes','行ったと思う']]}/>
-    </div>
-    <button className="primary" onClick={()=>{const h=addValidation(selected.actionId,helpful,counter);setHistory(h);run(answers,h)}}>まだ時間があるので、もう一つ見る</button>
-    <button className="secondary" onClick={()=>{setHistory(addValidation(selected.actionId,helpful,counter));setScreen('home')}}>今日はここまで</button>
+    </details>}
+    <button className="primary" onClick={()=>{const h=analyticsConsent?addValidation(selected.actionId,helpful,counter):history;setHistory(h);run(answers,h)}}>まだ時間があるので、もう一つ見る</button>
+    <button className="secondary" onClick={()=>{if(analyticsConsent)setHistory(addValidation(selected.actionId,helpful,counter));setScreen('home')}}>今日はここまで</button>
    </section>}
 
-   {screen==='history'&&<section><p className="eyebrow">これまでの彦根</p><h2>寄り道の記録</h2><p>この端末で寄り道した記録を保存しています。</p><button className="link" onClick={()=>setScreen('home')}>戻る</button></section>}
+   </>}
   </main>
   <footer className="note"><a href={import.meta.env.BASE_URL+'privacy.html'} target="_blank" rel="noopener noreferrer">プライバシー</a> · <a href={import.meta.env.BASE_URL+'terms.html'} target="_blank" rel="noopener noreferrer">利用規約</a></footer>
-  <nav><button onClick={()=>setScreen('home')}>ホーム</button><button onClick={beginQuestions}>寄り道を探す</button><button onClick={()=>setScreen('history')}>履歴</button></nav>
+  {!needsConsentChoice&&<details className="research-settings">
+   <summary>調査への協力</summary>
+   <p className="note">{analyticsConsent?'現在、調査に協力しています。':'現在、調査には協力していません。'}</p>
+   {analyticsConsent?<button className="link" onClick={()=>{recordAnalyticsChoice(false);setConsent(false);}}>協力をやめる</button>:<button className="link" onClick={()=>{pendingRoute.current?.abort();setScreen('home');setNeedsConsentChoice(true);}}>協力するか選び直す</button>}
+  </details>}
  </div>
 }
 
@@ -210,14 +200,14 @@ function Questionnaire({step,setStep,answers,setAnswers,gps,gpsBusy,gpsError,req
     <button type="button" className="secondary gps-button" disabled={gpsBusy} onClick={requestGps}>{gpsBusy?'現在地を取得中…':gps?'現在地を取得済み（再取得）':'現在地を取得する'}</button>
     {gps&&<p className="gps-notice">現在地を取得しました（精度 約{Math.round(gps.accuracy)}m）。Google Mapsの道案内に使います。</p>}
     {gpsError&&<p role="alert" className="gps-error">{gpsError}</p>}
-    <p className="note">自動計算は選択地点を基準にします。GPS座標は徒歩時間計算APIには送信しません。</p>
+    <p className="note">出発する場所を選んでください。現在地の取得は、地図の道案内に使います。</p>
     <Choice value={answers.currentNodeId} setValue={v=>setAnswers({...answers,currentNodeId:String(v)})} options={locs}/>
    </>},
   {q:'最後にどこへ行きますか？',body:<Choice value={answers.finalNodeId} setValue={v=>setAnswers({...answers,finalNodeId:String(v)})} options={locs}/>},
   {q:'あとどのくらい時間がありますか？',body:<Choice value={answers.remainingTimeMin} setValue={v=>setAnswers({...answers,remainingTimeMin:Number(v)})} options={[[20,'20分'],[35,'35分'],[60,'60分'],[90,'90分以上']]}/>},
   {q:'今、何がしたいですか？',body:<InterestChoices values={answers.interestTagIds} setValues={v=>setAnswers({...answers,interestTagIds:v})}/>},
   {q:'寄り道はどのくらいならOK？',body:<Choice value={answers.detourPreference} setValue={v=>{const x=String(v) as Answers['detourPreference'];setAnswers({...answers,detourPreference:x,discoveryOptIn:x!=='最短'})}} options={[['最短','なるべく寄り道しない'],['少しなら','少しならOK'],['積極','せっかくなので寄りたい']]}/>} ,
-  {q:'歩く速さ・今日の状況は？',body:<><p>歩く速さ</p><Choice value={answers.walkingPace||'standard'} setValue={v=>setAnswers({...answers,walkingPace:v})} options={[['standard','普通'],['relaxed','ゆっくり'],['slow','休憩しながら']]}/><p>天候など</p><Choice value={answers.walkingConditions||'normal'} setValue={v=>setAnswers({...answers,walkingConditions:v})} options={[['normal','通常'],['rain','雨・足元が悪い'],['heat','暑い・疲れやすい']]}/><p>歩く時間の合計上限</p><Choice value={answers.maxWalkMin} setValue={v=>setAnswers({...answers,maxWalkMin:v})} options={[[null,'上限なし'],[15,'15分まで'],[30,'30分まで'],[60,'60分まで'],...(answers.maxWalkMin!==null&&![15,30,60].includes(answers.maxWalkMin)?[[answers.maxWalkMin,answers.maxWalkMin+'分まで（入力値）']]:[])]}/><p className="note">補正は暫定的な安全目安です。個々の体力を正確に推定するものではありません。</p></>}
+  {q:'歩く速さ・今日の状況は？',body:<><p>歩く速さ</p><Choice value={answers.walkingPace||'standard'} setValue={v=>setAnswers({...answers,walkingPace:v})} options={[['standard','普通'],['relaxed','ゆっくり'],['slow','休憩しながら']]}/><p>天候など</p><Choice value={answers.walkingConditions||'normal'} setValue={v=>setAnswers({...answers,walkingConditions:v})} options={[['normal','通常'],['rain','雨・足元が悪い'],['heat','暑い・疲れやすい']]}/><p>歩く時間の合計上限</p><Choice value={answers.maxWalkMin} setValue={v=>setAnswers({...answers,maxWalkMin:v})} options={[[null,'上限なし'],[15,'15分まで'],[30,'30分まで'],[60,'60分まで'],...(answers.maxWalkMin!==null&&![15,30,60].includes(answers.maxWalkMin)?[[answers.maxWalkMin,answers.maxWalkMin+'分まで（入力値）']]:[])]}/><p className="note">無理なく歩ける条件を選んでください。</p></>}
  ];
  return <section>
   <div className="progress"><span style={{width:String(((step+1)/qs.length)*100)+'%'}}/></div>
@@ -316,8 +306,3 @@ function friendlySelectedTags(ids:string[]){
  }))];
 }
 
-function DebugSummary(){return <div className="debug-box"><b>開発用情報</b><div className="db-kpis"><div><b>{dbStats.nodeCount}</b><span>NODE</span></div><div><b>{dbStats.provisionalUsableEdgeCount}</b><span>EDGE</span></div><div><b>{knownActionCount}</b><span>ACTION</span></div><div><b>{researchNodeCount}</b><span>RESEARCH</span></div></div></div>}
-
-function DebugResults({recs,research}:{recs:Recommendation[];research:ResearchCandidate[]}){return <div className="debug-box"><p className="eyebrow">DEBUG</p><h3>推薦エンジン確認</h3>{recs.map(r=><div className="debug-row" key={r.id}><b>{r.id}</b><span>{r.layer} / +{r.detourMinutes}分</span><p>{r.dataStatus}</p></div>)}<ResearchList items={research}/></div>}
-
-function ResearchList({items}:{items:ResearchCandidate[]}){if(!items.length)return null;return <div className="research-panel"><h3>調査中候補</h3>{items.map(x=><div className="research-item" key={x.nodeId}><div><b>{x.nodeName}</b>{x.priority&&<span className="pill">PHOTO {x.priority}</span>}</div><small>{x.category} / {x.status}</small>{x.matchingTags.length>0&&<p>一致：{x.matchingTags.join('・')}</p>}<p className="blockers">不足：{x.blockers.join(' / ')}</p></div>)}</div>}
