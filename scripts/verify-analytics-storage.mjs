@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join,dirname} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {randomBytes} from 'node:crypto';
-import {transpileModule,ModuleKind,ScriptTarget} from 'typescript';
+import {stripTypeScriptTypes} from 'node:module';
 import assert from 'node:assert/strict';
 const run=process.env.HIKONE_ANALYTICS_TEST_RUN;
 if(process.env.VERCEL_ENV!=='preview'||!run||!/^test-[a-z0-9-]{8,64}$/.test(run))throw new Error('Only an explicitly isolated Preview can run storage verification');
@@ -25,7 +25,7 @@ try{
  for(const file of files){
   const source=await readFile(file+'.ts','utf8');
   const target=join(temp,file+'.js');await mkdir(dirname(target),{recursive:true});
-  await writeFile(target,transpileModule(source,{compilerOptions:{module:ModuleKind.ESNext,target:ScriptTarget.ES2022}}).outputText);
+  await writeFile(target,stripTypeScriptTypes(source));
  }
  collect=(await import(pathToFileURL(join(temp,'api/analytics-collect.js')).href)).default;
  report=(await import(pathToFileURL(join(temp,'api/analytics-report.js')).href)).default;

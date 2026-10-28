@@ -1,7 +1,11 @@
 {
-  "$schema":"https://openapi.vercel.sh/vercel.json",
-  "framework":null,
-  "buildCommand":"npm run typecheck:api && npm run build:backend",
-  "outputDirectory":"backend-public",
-  "functions":{"api/*.ts":{"maxDuration":30}}
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "npm run typecheck:api && npm run build:backend && if [ \"$HIKONE_ANALYTICS_VERIFY_STORAGE\" = \"1\" ]; then node scripts/verify-analytics-storage.mjs; fi",
+  "outputDirectory": "backend-public",
+  "functions": {
+    "api/*.ts": {
+      "maxDuration": 30
+    }
+  }
 }

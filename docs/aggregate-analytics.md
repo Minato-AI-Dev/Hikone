@@ -53,3 +53,5 @@ curl -H "Authorization: Bearer $HIKONE_ANALYTICS_ADMIN_TOKEN" \
 
 ### 秘密値を取り出さないPreviewビルド内検証
 Preview限定で `node scripts/verify-analytics-storage.mjs` を実行できます。Vercelに適用済みのRedis接続を使い、同じ収集・レポートハンドラで実Redisを検証します。管理認証には検証プロセス内だけのランダムな一時トークンを使い、保存済みの管理トークンは変更しません。実Redisの件数をダッシュボードのJavaScriptへ渡し、7日分の行・棒グラフ・CSV生成もDOM上で検証します（実ブラウザの画面確認とは別です）。終了時にテストイベントキーを削除し、ゼロ件を再取得します。研究用キーは比較のための読み取りのみです。
+
+ビルド内の実接続検証は、対象Previewブランチだけに `HIKONE_ANALYTICS_VERIFY_STORAGE=1` を設定した場合に実行します。本番には設定しません。通常のビルドはこの検証を実行しません。
