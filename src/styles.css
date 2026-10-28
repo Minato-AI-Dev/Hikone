@@ -33,3 +33,12 @@
 .research-settings .link{width:auto;text-align:left;padding-left:0}
 button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #708c7a;outline-offset:3px}
 @media(min-width:540px){.consent-options{grid-template-columns:1fr 1fr}}
+
+/* Visitor-facing time summaries: only added time and total trip time. */
+.detour-badge{display:grid;gap:4px;text-align:right;flex-shrink:0}
+.detour-badge small,.detail-detour small{font:600 12px/1.5 system-ui,sans-serif;color:#53675c}
+.detour-badge strong{font-size:24px;line-height:1.2;font-variant-numeric:tabular-nums}
+.detail-detour small{display:block}
+.time-summary{display:flex;align-items:center;justify-content:space-between;gap:14px;border-top:1px solid #d6e0d9;margin-top:20px;padding-top:16px;color:#263b32;font-size:15px;line-height:1.6}
+.time-summary strong{white-space:nowrap;font-size:25px;font-variant-numeric:tabular-nums}
+@media(max-width:380px){.time-summary{font-size:13px;gap:8px}.time-summary strong{font-size:22px}}
