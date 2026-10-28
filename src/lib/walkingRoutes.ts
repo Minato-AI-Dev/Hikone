@@ -15,7 +15,7 @@ export async function autoRecommend(answers:Answers,history:HistoryState|null,_o
   const candidates=routingCandidateIds(answers,history);
   if(!candidates.length)return {recommendations:[],source:'unavailable',warning:'現在の条件に合う候補がありません。'};
   const endpoint=import.meta.env.VITE_WALKING_ROUTE_ENDPOINT?.trim() || (import.meta.env.DEV?'/api/walking-routes':'');
-  if(!endpoint)return fallback('徒歩経路サービスが未設定です。');
+  if(!endpoint)return fallback('現在、徒歩経路を取得できません。');
   const pairs=[{from:answers.currentNodeId,to:answers.finalNodeId},...candidates.flatMap(id=>[{from:answers.currentNodeId,to:id},{from:id,to:answers.finalNodeId}])].filter(p=>p.from!==p.to);
   const unique=[...new Map(pairs.map(p=>[p.from+'>'+p.to,p])).values()];
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),25000);
@@ -23,6 +23,7 @@ export async function autoRecommend(answers:Answers,history:HistoryState|null,_o
   try {
     // Send only repository IDs. GPS and client-provided addresses are never included.
     const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pairs:unique}),signal:controller.signal});
+    if(response.status===429)return fallback('現在、経路案内が混み合っています。時間をおいてお試しください。');
     if(!response.ok)throw new Error('Routing unavailable');
     const data=await response.json();
     if(!data||typeof data.legs!=='object'||!data.legs||Array.isArray(data.legs))throw new Error('Invalid routes');
@@ -34,7 +35,7 @@ export async function autoRecommend(answers:Answers,history:HistoryState|null,_o
     }
     if(answers.currentNodeId!==answers.finalNodeId&&!routed[answers.currentNodeId+'>'+answers.finalNodeId])throw new Error('Missing direct route');
     const partial=Object.keys(routed).length<unique.length;
-    return {recommendations:recommend(answers,history,routed),source:'maps',warning:'Google Maps の徒歩推定を歩行ペース・天候で補正し、計画の余裕5分を加えています。地点の入口・座標と一部の滞在時間は未検証です。'+(partial?' 一部の経路を取得できず、候補を省略しました。':'')};
+    return {recommendations:recommend(answers,history,routed),source:'maps',warning:'移動時間はGoogle Mapsの目安です。天候や道の状況に合わせて、余裕をもってお出かけください。'+(partial?' 一部の経路を取得できず、候補を省略しました。':'')};
   } catch {
     if(signal?.aborted)return {recommendations:[],source:'unavailable',warning:''};
     return fallback('現在、徒歩経路を取得できません。');

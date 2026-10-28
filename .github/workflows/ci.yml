@@ -30,3 +30,16 @@ jobs:
         env:
           VITE_WALKING_ROUTE_ENDPOINT: https://routing-ci.example/api/walking-routes
         run: npm run build:pages
+
+  dependency-repair:
+    if: github.head_ref == 'fix/audit-hardening'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Diagnose and prepare non-breaking dependency repair
+        run: node scripts/prepare-dependency-repair.mjs

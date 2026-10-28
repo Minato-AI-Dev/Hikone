@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { nodeById, tagNames } from './data/dbV4';
 import { Answers, HistoryState, Recommendation } from './types';
-import { addValidation, completeExperience, loadHistory, startExperience } from './lib/history';
+import { addValidation, completeExperience, historyIsTemporary, loadHistory, startExperience } from './lib/history';
 import { nodeOptions } from './lib/recommend';
 import { track, hasAnalyticsConsent, setAnalyticsConsent, hasAnalyticsChoice, recordAnalyticsChoice } from './lib/analytics';
 import { visitorStory } from './data/visitorStories';
@@ -25,6 +25,7 @@ export default function App(){
  const [history,setHistory]=useState<HistoryState|null>(()=>loadHistory());
  const [needsConsentChoice,setNeedsConsentChoice]=useState(()=>!hasAnalyticsChoice());
  const [analyticsConsent,setConsent]=useState<boolean>(()=>hasAnalyticsConsent());
+ const [temporaryHistory,setTemporaryHistory]=useState(false);
  const [screen,setScreenState]=useState<Screen>('home');
  const pendingRoute=useRef<AbortController|null>(null);
  const setScreen=(next:Screen)=>{if(next!=='results')pendingRoute.current?.abort();setScreenState(next)};
@@ -62,21 +63,19 @@ export default function App(){
  const run=async(a=answers,h=history)=>{
    pendingRoute.current?.abort();const controller=new AbortController();pendingRoute.current=controller;
    setRecs([]);setRoutingBusy(true);setRoutingNotice('徒歩経路を計算しています…');setScreen('results');
-   const result=await autoRecommend(a,h,undefined,controller.signal);if(controller.signal.aborted)return;
-   const r=result.recommendations;
-   setRoutingNotice(result.warning);
-   setRoutingSource(result.source);
-   setRoutingBusy(false);
-   setRecs(r);
-   
-   
-   setScreen('results');
-   track('recommendation_viewed',{count:r.length,currentNodeId:a.currentNodeId,finalNodeId:a.finalNodeId});
+   try{
+    const result=await autoRecommend(a,h,undefined,controller.signal);if(controller.signal.aborted)return;
+    const r=result.recommendations;
+    setRoutingNotice(result.warning);setRoutingSource(result.source);setRecs(r);
+    if(r.length>0)track('recommendation_viewed',{count:r.length,currentNodeId:a.currentNodeId,finalNodeId:a.finalNodeId});
+   }catch{
+    if(!controller.signal.aborted){setRecs([]);setRoutingSource('unavailable');setRoutingNotice('おすすめを取得できませんでした。通信環境を確認して、もう一度お試しください。');}
+   }finally{if(!controller.signal.aborted)setRoutingBusy(false);}
  };
  const beginQuestions=()=>{setStep(0);setAnswers(a=>({...a,firstVisit:!history}));setScreen('questions');track('questionnaire_started')};
  const selectRec=(r:Recommendation)=>{setSelected(r);setScreen('detail');track('recommendation_selected',{id:r.id,detourMinutes:r.detourMinutes})};
- const beginExperience=()=>{if(!selected)return;const h=startExperience({experienceId:selected.actionId,startedAt:new Date().toISOString(),completed:false},answers);setHistory(h);setScreen('go');track('experience_started',{id:selected.actionId,detourMinutes:selected.detourMinutes})};
- const markCompleted=(ok:boolean)=>{if(!selected)return;if(ok){const h=completeExperience(selected.actionId);setHistory(h);setScreen('done');track('experience_completed',{id:selected.actionId,method:'manual'})}else{setScreen('home');track('experience_not_completed',{id:selected.actionId})}};
+ const beginExperience=()=>{if(!selected)return;const h=startExperience({experienceId:selected.actionId,startedAt:new Date().toISOString(),completed:false},answers);setHistory(h);setTemporaryHistory(historyIsTemporary());setScreen('go');track('experience_started',{id:selected.actionId,detourMinutes:selected.detourMinutes})};
+ const markCompleted=(ok:boolean)=>{if(!selected)return;if(ok){const h=completeExperience(selected.actionId);setHistory(h);setTemporaryHistory(historyIsTemporary());setScreen('done');track('experience_completed',{id:selected.actionId,method:'manual'})}else{setScreen('home');track('experience_not_completed',{id:selected.actionId})}};
  const reset=()=>{setSelected(null);setRecs([]);setScreen('home')};
 
  const chooseResearch=(enabled:boolean)=>{
@@ -85,6 +84,7 @@ export default function App(){
  return <div className="app">
   <header className="top"><button className="brand" onClick={reset} disabled={needsConsentChoice}>次の彦根</button></header>
   <main>
+   {temporaryHistory&&<p className="note" role="status">この端末には記録を保存できませんが、このまま利用できます。タブを閉じると今回の記録は失われます。</p>}
    {needsConsentChoice?<section className="consent-intro" aria-labelledby="consent-title">
     <p className="eyebrow">ようこそ、彦根へ</p>
     <h1 id="consent-title">観光の調査に<br/>協力しますか？</h1>
@@ -108,7 +108,7 @@ export default function App(){
    {screen==='results'&&<section>
     <p className="eyebrow">今から行けるところ</p>
     <h2>{routingBusy?'徒歩経路を確認中…':recs.length?'このあたりがおすすめです':'今の条件では、寄り道なしが安心です'}</h2>
-    {routingBusy?<p className="note" role="status">歩いて行ける寄り道を探しています…</p>:<p className="note" role="status">{recs.length?'移動時間は目安です。余裕をもってお出かけください。':'条件を変えて、もう一度お試しください。'}</p>}
+    {routingBusy?<p className="note" role="status">歩いて行ける寄り道を探しています…</p>:<p className="note" role="status">{routingNotice||(recs.length?'移動時間は目安です。余裕をもってお出かけください。':'条件を変えて、もう一度お試しください。')}</p>}
     {!routingBusy&&routingSource==='maps'&&<p className="maps-attribution" translate="no">Google Maps</p>}
     {gps&&<p className="gps-notice">地図の道案内には現在地を使います。所要時間は{shortName(currentName)}からの目安です。</p>}
     <div className="route-context"><b>{shortName(currentName)}</b><span>→</span><b>{shortName(finalName)}</b><small>残り {answers.remainingTimeMin}分</small></div>

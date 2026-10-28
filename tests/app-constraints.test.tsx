@@ -54,3 +54,21 @@ it('remembers a declined choice without asking again or collecting events',()=>{
  render(<App/>);expect(screen.queryByRole('heading',{name:/協力しますか/})).toBeNull();
  expect(screen.getByRole('button',{name:/寄り道を探す/})).toBeTruthy();expect(fetch).not.toHaveBeenCalled();
 });
+
+it('does not count an empty recommendation result as a recommendation view',async()=>{
+ render(<App/>);fireEvent.click(screen.getByRole('button',{name:'協力してはじめる'}));
+ for(let i=0;i<5;i++)fireEvent.click(screen.getByRole('button',{name:'次へ',exact:true}));
+ fireEvent.click(screen.getByRole('button',{name:'おすすめを見る',exact:true}));
+ await screen.findByText('今の条件では、寄り道なしが安心です');
+ const events=vi.mocked(fetch).mock.calls.map(([,init])=>JSON.parse(init!.body as string).event);
+ expect(events).not.toContain('recommendation_viewed');
+});
+it('leaves loading and allows retry after an unexpected recommendation failure',async()=>{
+ vi.mocked(autoRecommend).mockRejectedValueOnce(new Error('unexpected'));
+ render(<App/>);fireEvent.click(screen.getByRole('button',{name:'協力せずにはじめる'}));
+ for(let i=0;i<5;i++)fireEvent.click(screen.getByRole('button',{name:'次へ',exact:true}));
+ fireEvent.click(screen.getByRole('button',{name:'おすすめを見る',exact:true}));
+ await screen.findByText(/おすすめを取得できませんでした/);
+ expect(screen.queryByText('徒歩経路を確認中…')).toBeNull();
+ expect(screen.getByRole('button',{name:'条件を変える'})).toBeTruthy();
+});
