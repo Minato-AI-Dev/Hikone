@@ -21,3 +21,29 @@
 
 .story-source{display:block;color:#53675c;font-size:12px;text-decoration:underline;text-underline-offset:3px;padding:11px 16px;line-height:1.5;background:#faf9f6}.story-source:hover{color:#263b32}.catalog-item .story-source{padding:8px 0 10px;background:transparent}
 .maps-attribution{font-family:Roboto,sans-serif;font-size:14px;font-weight:400;color:#1f1f1f;white-space:nowrap;letter-spacing:normal}
+
+/* One visitor journey, with an explicit and optional research choice first. */
+.app{padding-bottom:30px}
+.consent-intro{margin-top:12px}
+.consent-intro h1{font-size:clamp(30px,7vw,44px)}
+.consent-options{display:grid;gap:12px;margin-top:24px}
+.consent-options .secondary{margin:0;text-align:center;min-height:54px}
+.research-details,.research-settings{margin-top:24px;font-size:13px;color:#746e64;line-height:1.8}
+.research-details summary,.research-settings summary{cursor:pointer;padding:10px 0}
+.research-settings .link{width:auto;text-align:left;padding-left:0}
+button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #708c7a;outline-offset:3px}
+@media(min-width:540px){.consent-options{grid-template-columns:1fr 1fr}}
+
+/* Visitor-facing time summaries: only added time and total trip time. */
+.detour-badge{display:grid;gap:4px;text-align:right;flex-shrink:0}
+.detour-badge small,.detail-detour small{font:600 12px/1.5 system-ui,sans-serif;color:#53675c}
+.detour-badge strong{font-size:24px;line-height:1.2;font-variant-numeric:tabular-nums}
+.detail-detour small{display:block}
+.time-summary{display:flex;align-items:center;justify-content:space-between;gap:14px;border-top:1px solid #d6e0d9;margin-top:20px;padding-top:16px;color:#263b32;font-size:15px;line-height:1.6}
+.time-summary strong{white-space:nowrap;font-size:25px;font-variant-numeric:tabular-nums}
+@media(max-width:380px){.time-summary{font-size:13px;gap:8px}.time-summary strong{font-size:22px}}
+
+.research-explanation{font-size:14px;color:#49473f;line-height:1.85}
+.research-explanation h2{font-family:inherit;font-size:16px;line-height:1.5;margin:22px 0 8px;color:#263b32}
+.research-explanation p{margin:8px 0 14px}
+.research-explanation a{color:#365d4a;text-underline-offset:3px}

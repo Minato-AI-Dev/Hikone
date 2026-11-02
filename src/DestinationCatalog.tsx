@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { nodes, nodeTags, tagNames } from './data/dbV4';
 import { visitorStory } from './data/visitorStories';
 import { foodPlaces } from './data/foodPlaces';
 import { shoppingPlaces } from './data/shoppingPlaces';
+import { localShopCandidates } from './data/localShopCandidates';
+import { filmLocations } from './data/filmLocations';
 
 type CatalogPlace = (typeof nodes)[number];
-type ShopStatus={shopId:string;status:'scheduled_open'|'scheduled_closed'|'unknown';checkedAt:string|null;reason:string;source:string};
-const shopStatusLabel=(status:ShopStatus|undefined)=>status?.status==='scheduled_open'?'取得時点では営業中':status?.status==='scheduled_closed'?'取得時点では営業時間外':'営業情報は未確認';
 const interestFilters = [
   {label:'すべて',tag:''},
   {label:'ひこにゃん',tag:'T_HIKONYAN'},
@@ -30,35 +30,10 @@ const cautious=(p:CatalogPlace)=>p.status!=='ACTIVE'||!isPubliclyAccessible(p) |
 const groupOrder=['CASTLE','CASTLE_TOWN','STATION','HANASHOBU','HONMACHI','MOTOMACHI','SERIBASHI','SERIKAWA','NANAMAGARI','LAKE_MATSUBARA'];
 
 export default function DestinationCatalog({onBack}:{onBack:()=>void}){
- const [shopStatuses,setShopStatuses]=useState<Record<string,ShopStatus>>({});
- const [shopChecking,setShopChecking]=useState(false);
- const [shopNotice,setShopNotice]=useState('');
  const [query,setQuery]=useState('');
  const [tag,setTag]=useState('');
  const [onlyEasy,setOnlyEasy]=useState(false);
  const [area,setArea]=useState('すべて');
- useEffect(()=>{
-   const endpoint=import.meta.env.VITE_SHOP_HOURS_ENDPOINT?.trim() || (import.meta.env.DEV?'/api/shop-hours':'');
-   if(!endpoint){setShopNotice('営業情報の自動確認は現在利用できません。');return;}
-   const controller=new AbortController();
-   setShopChecking(true);
-   fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({shopIds:shoppingPlaces.map(p=>p.id)}),signal:controller.signal})
-     .then(async response=>{if(!response.ok)throw new Error('status lookup unavailable');return response.json();})
-     .then(data=>{
-       if(controller.signal.aborted)return;
-       const statuses:Record<string,ShopStatus>={};
-       if(Array.isArray(data?.results))for(const r of data.results){
-         if(!r||typeof r.shopId!=='string'||!shoppingPlaces.some(p=>p.id===r.shopId))continue;
-         if(!['scheduled_open','scheduled_closed','unknown'].includes(r.status))continue;
-         statuses[r.shopId]={shopId:r.shopId,status:r.status,checkedAt:typeof r.checkedAt==='string'?r.checkedAt:null,reason:typeof r.reason==='string'?r.reason:'',source:typeof r.source==='string'?r.source:''};
-       }
-       setShopStatuses(statuses);
-       setShopNotice(typeof data?.notice==='string'?data.notice:'営業情報は参考表示です。最新状況は店舗にご確認ください。');
-     })
-     .catch(()=>{if(!controller.signal.aborted)setShopNotice('営業情報を取得できません。訪問前に店舗へご確認ください。');})
-     .finally(()=>{if(!controller.signal.aborted)setShopChecking(false)});
-   return ()=>controller.abort();
- },[]);
  const list=useMemo(()=>{
    const text=query.trim().toLocaleLowerCase();
    return nodes.filter(p=>p.type==='poi'||p.type==='area')
@@ -74,6 +49,8 @@ export default function DestinationCatalog({onBack}:{onBack:()=>void}){
      });
  },[query,tag,onlyEasy]);
  const shopsFiltered=shoppingPlaces.filter(p=>(area==='すべて'||area===p.area)&&(!query.trim()||[p.name,p.product,p.suggestedActivity,p.address].some(v=>v.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())))&&(!tag||p.interestTags.includes(tag))&&!onlyEasy);
+ const localFiltered=localShopCandidates.filter(p=>(area==='すべて'||area===p.area)&&(!query.trim()||[p.name,p.category,p.area,p.suggestedActivity||''].some(v=>v.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())))&&(!tag||p.interestTags.includes(tag))&&!onlyEasy);
+ const filmFiltered=filmLocations.filter(p=>(area==='すべて'||area===p.area)&&(!query.trim()||[p.name,p.area,...p.works].some(v=>v.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())))&&(!tag||p.interestTags.includes(tag))&&!onlyEasy);
  const foodFiltered=foodPlaces.filter(p=>(area==='すべて'||area===p.area)&&(!query.trim()||[p.name,p.category,p.area,p.story].some(v=>v.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())))&&(!tag||tag==='T_FOOD'||tag==='T_SHOP')&&!onlyEasy);
  return <section className="catalog-page">
    <p className="eyebrow">彦根の行き先を探す</p>
@@ -85,15 +62,13 @@ export default function DestinationCatalog({onBack}:{onBack:()=>void}){
     {interestFilters.map(f=><button key={f.label} className={tag===f.tag?'catalog-filter active':'catalog-filter'} onClick={()=>setTag(f.tag)} aria-pressed={tag===f.tag}>{f.label}</button>)}
    </div>
    <div className="catalog-filters" aria-label="エリアで絞り込む">
-    {['すべて','四番町スクエア','花しょうぶ通り','銀座商店街','彦根駅周辺'].map(v=><button key={v} className={area===v?'catalog-filter active':'catalog-filter'} onClick={()=>setArea(v)} aria-pressed={area===v}>{v}</button>)}
+    {['すべて','四番町スクエア','花しょうぶ通り','銀座商店街','彦根駅周辺','夢京橋キャッスルロード','彦根城内','彦根城周辺','佐和山周辺','琵琶湖沿岸','高宮'].map(v=><button key={v} className={area===v?'catalog-filter active':'catalog-filter'} onClick={()=>setArea(v)} aria-pressed={area===v}>{v}</button>)}
    </div>
    <label className="catalog-check"><input type="checkbox" checked={onlyEasy} onChange={e=>setOnlyEasy(e.target.checked)}/> 公開場所として登録済みの候補だけ見る</label>
-   <p className="catalog-count">{area==='すべて'?'行き先 '+list.length+'件・食のお店 '+foodFiltered.length+'件・買物候補 '+shopsFiltered.length+'件':'食のお店 '+foodFiltered.length+'件・買物候補 '+shopsFiltered.length+'件'}</p>
+   <p className="catalog-count">{area==='すべて'?'行き先 '+list.length+'件・食のお店 '+foodFiltered.length+'件・買物候補 '+shopsFiltered.length+'件・商店街の店舗 '+localFiltered.length+'件':'食のお店 '+foodFiltered.length+'件・買物候補 '+shopsFiltered.length+'件'}</p>
    {shopsFiltered.length>0&&<><h3>四番町スクエアのお買物候補</h3><p className="note">公式掲載情報を基にした調査候補です。店舗入口・店内所要時間・当日の営業は未確認のため、時間付きの自動推薦には含めません。</p>
-   <p className="note" role="status">{shopNotice||'営業情報は取得時点の参考情報で、到着時の営業を保証しません。'}</p>
    <div className="catalog-grid">{shopsFiltered.map(p=><article className="catalog-item" key={p.id}>
-    <div className="catalog-item-head"><h3>{p.name}</h3><span className="catalog-unverified">{shopChecking?'営業情報を確認中':shopStatusLabel(shopStatuses[p.id])}</span></div>
-    <p className="note">{shopStatuses[p.id]?.reason||'掲載営業時間だけでは当日の営業を確認できません。'}{shopStatuses[p.id]?.checkedAt?'（確認時刻：'+new Date(shopStatuses[p.id].checkedAt!).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo'})+'）':''}</p>
+    <div className="catalog-item-head"><h3>{p.name}</h3><span className="catalog-unverified">来店前に営業確認</span></div>
     <p className="catalog-category">{p.area} ・ {p.product}</p>
     <p className="catalog-desc">{p.suggestedActivity}</p>
     <p>所在地（公開案内）：{p.address}</p>
@@ -110,6 +85,8 @@ export default function DestinationCatalog({onBack}:{onBack:()=>void}){
     <a className="story-source" href={p.source} target="_blank" rel="noopener noreferrer">店舗・紹介情報を見る ↗</a>
     <a className="catalog-map-link" href={'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(p.name+' '+p.address)} target="_blank" rel="noopener noreferrer">Google Mapsで場所を見る ↗</a>
    </article>)}</div></>}
+   {localFiltered.length>0&&<><h3>商店街の店舗候補</h3><p className="note">商店街の公式掲載リストに基づく調査候補です。住所・店舗入口・営業日・滞在時間を確認するまでは、時間付き推薦に使用しません。</p><div className="catalog-grid">{localFiltered.map(p=><article className="catalog-item" key={p.id}><div className="catalog-item-head"><h3>{p.name}</h3><span className="catalog-unverified">詳細確認中</span></div><p className="catalog-category">{p.area} ・ {p.category}</p><p className="catalog-desc">{p.suggestedActivity||"店舗の情報を確認する"}</p><p className="note">個別住所・営業状況・所要時間は未検証です。</p><a className="story-source" href={p.source} target="_blank" rel="noopener noreferrer">商店街公式の店舗一覧を見る ↗</a><a className="catalog-map-link" href={'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(p.name+' '+p.area+' 彦根市')} target="_blank" rel="noopener noreferrer">Google Mapsで検索 ↗</a></article>)}</div></>}
+   {filmFiltered.length>0&&<><h3>映画のロケ地を探す</h3><p className="note">公式資料で撮影実績を確認した地点です。撮影位置の詳細・立入可否・移動時間は未検証のため、時間付きの自動推薦には使用しません。</p><div className="catalog-grid">{filmFiltered.map(p=><article className="catalog-item" key={p.id}><div className="catalog-item-head"><h3>{p.name}</h3><span className="catalog-unverified">現地確認前</span></div><p className="catalog-category">{p.area} ・ 映画ロケ地</p><p className="catalog-desc">関連作品：{p.works.join('、')}</p><p>{p.suggestedActivity}</p><a className="story-source" href={p.source} target="_blank" rel="noopener noreferrer">撮影実績の出典を見る ↗</a><a className="catalog-map-link" href={'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(p.name+' 彦根市')} target="_blank" rel="noopener noreferrer">Google Mapsで地点を検索 ↗</a></article>)}</div></>}
    {area==='すべて'&&<><h3>観光スポットも探す</h3><div className="catalog-grid">{list.map(p=><article className="catalog-item" key={p.id}>
      <div className="catalog-item-head"><h3>{canonical(p)}</h3>{cautious(p)&&<span className="catalog-unverified">詳細確認中</span>}</div>
      <p className="catalog-category">{p.category}</p>
@@ -118,7 +95,7 @@ export default function DestinationCatalog({onBack}:{onBack:()=>void}){
      <div className="catalog-tags">{(nodeTags[p.id]||[]).slice(0,3).map(t=><span key={t}>{tagNames[t]||t}</span>)}</div>
      <a className="catalog-map-link" href={maps(p)} target="_blank" rel="noopener noreferrer">Google Mapsで場所を見る ↗</a>
    </article>)}</div></>}
-   {!list.length&&!foodFiltered.length&&!shopsFiltered.length&&<p>該当する場所が見つかりません。検索語やカテゴリを変更してください。</p>}
+   {!list.length&&!foodFiltered.length&&!shopsFiltered.length&&!localFiltered.length&&!filmFiltered.length&&<p>該当する場所が見つかりません。検索語やカテゴリを変更してください。</p>}
    <p className="note">飲食店・個別店舗の滞在時間・待ち時間は未計測のため、現時点では時間付きの自動推薦には含めません。</p>
    <p className="note">この一覧は行き先を探すためのものです。地図は地名検索で開きます。正確な入口、営業・公開状況、寄り道の所要時間を保証するものではありません。</p>
    <button className="secondary" onClick={onBack}>ホームへ戻る</button>

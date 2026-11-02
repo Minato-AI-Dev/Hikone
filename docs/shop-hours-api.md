@@ -1,12 +1,22 @@
-# 店舗営業情報 API（初期実装）
+# 店舗営業状況API（PR #29）
 
-`POST /api/shop-hours` に `{"shopIds":["SHOP001","SHOP002"]}` を送ると、登録店舗に関するGoogle Placesの**取得時点**の公開営業情報を返します。
+## 実装
+POST /api/shop-hours, body \`{"shopIds":["SHOP001","SHOP002","SHOP003"]}\`.
+- 3件まで・既知ショップIDのみ。任意の店名・URL・GPSは受け取らない。
+- サーバーは \`HIKONE_SHOP_PLACE_IDS_JSON\` の**確認済み**Place IDで Google Places (New) Details を取得。
+- API応答のID・店舗名と彦根市住所の照合ができない場合は \`unknown\`。営業状態と currentOpeningHours.openNow が揃わない場合も unknown。
+- \`scheduled_open\` / \`scheduled_closed\` は取得時点の掲載状態だけを示す。将来の到着時刻ではない。
+- 個別店舗の入口・体験所要時間が未検証であるため、自動ルート推薦へ追加しない。未検証の店舗依存ACTIONは推薦から除外する。
+- ボタン操作時にだけ取得する。Google Maps帰属・取得日時・公開情報のURLを示す。
+- サーバー保護は既存Redisの共有レート制限を再利用。ショップ枠は1 IP/分6、全体/分60、UTC日250件。情報が取得できない場合はエラーかunknownで停止。
+- 課金・Google APIルールの確認が必要。Places API (New)で営業時間フィールドを利用できるようサーバーのAPIキー制限を整える。
 
-- サーバー環境変数 `GOOGLE_MAPS_API_KEY` と `HIKONE_SHOP_PLACE_IDS_JSON` が必要です。
-- `HIKONE_SHOP_PLACE_IDS_JSON` は、検証済みPlace IDのJSONオブジェクトです。例: `{"SHOP001":"<照合済みPlace ID>"}`。未照合のIDを推測して登録しないでください。
-- 共有レート制限ストアと `HIKONE_RATE_LIMIT_SALT` がない場合、有料APIへのアクセスを停止します。
-- `scheduled_open` / `scheduled_closed` は**取得時点**のGoogle掲載情報であり、未来の到着時刻の営業保証ではありません。未確認やAPI失敗は `unknown` にします。
-- 公式サイトでの臨時休業はまだ自動取得できません。情報源に矛盾がある場合の突合、想定到着時刻の判定、店舗推薦への接続は次の段階です。
-- Place ID未登録でもエラーにせず `unknown` を返します。
-- 利用時にはPlaces APIの利用規約、帰属表示とキャッシュに関する要件を確認・遵守してください。現在の実装は結果を保存しません。
-- 外部からは許可Origin、POST、JSON、登録済みSHOP IDのみ受付けます。
+## 本番公開までの運用チェック
+1. SHOP001–003のPlace IDを店舗の公式案内、住所、名称と照合して登録。
+2. Vercel（Preview/Production）の \`HIKONE_SHOP_PLACE_IDS_JSON\` 設定を行う。秘密鍵はコミットしない。
+3. Google Cloudで現在のRoutes API専用キーの制限を確認し、Places API (New)も許可する場合は請求・クォータを確認。リファラー制限を加えない。
+4. GitHub Actions Variablesに \`VITE_SHOP_HOURS_ENDPOINT\` を設定。
+5. Previewの実APIで open / closed / unknown とアクセス拒否を確認し、スマホで閲覧と変更テストをする。
+6. 公式SNS等の臨時休業情報は自動確認できないので、公開文章には断定を入れない。
+
+未設定でも表示は「営業未確認」のままであり、Googleへは課金リクエストを出さない。
