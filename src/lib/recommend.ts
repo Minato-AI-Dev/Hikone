@@ -81,7 +81,7 @@ export function recommend(answers:Answers,history:HistoryState|null,routed?:Rout
     if(!node.modes.includes(answers.availableMode)) continue;
     if(!node.publicStatus.includes('公開')&&!provisionalNodeIds.has(node.id)) continue;
     const usableActions=[...actionsForNode(node.id),...provisionalActions.filter(a=>a.nodeId===node.id)]
-      .filter(a=>typeof a.minStay==='number'&&(a.timeStatus==='KNOWN'||a.timeStatus==='仮設定'||a.timeStatus==='概算Demo')&&!done.has(a.id))
+      .filter(a=>a.publicCondition!=='店舗依存'&&typeof a.minStay==='number'&&(a.timeStatus==='KNOWN'||a.timeStatus==='仮設定'||a.timeStatus==='概算Demo')&&!done.has(a.id))
       .sort((a,b)=>{
         const am=actionSupportsExplicitTheme(a.type,answers.interestTagIds)?1:0;
         const bm=actionSupportsExplicitTheme(b.type,answers.interestTagIds)?1:0;
@@ -176,7 +176,7 @@ export const knownActionCount=actions.filter(a=>typeof a.minStay==='number'&&(a.
 export function routingCandidateIds(a:Answers,h:HistoryState|null):string[]{
  const done=completedIds(h);
  return nodes.filter(n=>(n.type==='poi'||n.type==='area') && n.id!==a.currentNodeId && n.id!==a.finalNodeId && (n.status==='ACTIVE'||provisionalNodeIds.has(n.id)) && n.modes.includes('徒歩') && (n.publicStatus.includes('公開')||provisionalNodeIds.has(n.id)))
- .filter(n=>[...actionsForNode(n.id),...provisionalActions.filter(x=>x.nodeId===n.id)].some(x=>typeof x.minStay==='number'&&x.minStay+WALKING_MODEL.safetyMinutes<=a.remainingTimeMin&&!done.has(x.id)&&['KNOWN','仮設定','概算Demo'].includes(x.timeStatus)&&actionSupportsExplicitTheme(x.type,a.interestTagIds)))
+ .filter(n=>[...actionsForNode(n.id),...provisionalActions.filter(x=>x.nodeId===n.id)].some(x=>x.publicCondition!=='店舗依存'&&typeof x.minStay==='number'&&x.minStay+WALKING_MODEL.safetyMinutes<=a.remainingTimeMin&&!done.has(x.id)&&['KNOWN','仮設定','概算Demo'].includes(x.timeStatus)&&actionSupportsExplicitTheme(x.type,a.interestTagIds)))
  .filter(n=>{const tags=matchingTags(n.id,a.interestTagIds);return tags.length>0||a.discoveryOptIn&&a.detourPreference!=='最短';})
  .sort((x,y)=>matchingTags(y.id,a.interestTagIds).length-matchingTags(x.id,a.interestTagIds).length)
  .slice(0,8).map(n=>n.id);

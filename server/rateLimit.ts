@@ -12,7 +12,7 @@ redis.call('INCR', KEYS[1]); redis.call('EXPIRE', KEYS[1], 120)
 redis.call('INCRBY', KEYS[2], ARGV[4]); redis.call('EXPIRE', KEYS[2], 120)
 redis.call('INCRBY', KEYS[3], ARGV[4]); redis.call('EXPIRE', KEYS[3], 172800)
 return 1`;
-export async function reserveBudget(req:ApiRequest,service:'routes'|'ai'|'analytics'|'report',units:number):Promise<LimitResult> {
+export async function reserveBudget(req:ApiRequest,service:'routes'|'ai'|'analytics'|'report'|'shops',units:number):Promise<LimitResult> {
   // Select a complete namespace; never send one provider's token to another URL.
   const custom=Boolean(process.env.UPSTASH_REDIS_REST_URL||process.env.UPSTASH_REDIS_REST_TOKEN);
   const url=custom?process.env.UPSTASH_REDIS_REST_URL:process.env.KV_REST_API_URL;
@@ -30,7 +30,7 @@ export async function reserveBudget(req:ApiRequest,service:'routes'|'ai'|'analyt
     // Keep route/AI and production limiter keys unchanged.
     const prefix=(service==='analytics'||service==='report')&&analyticsTestRun()?analyticsPrefix()+':limit'+(service==='report'?':report':''):`hikone:${service}`;
     const response=await fetch(url,{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},signal:controller.signal,
-      body:JSON.stringify(['EVAL',script,3,`${prefix}:ip:${minute}:${identity}`,`${prefix}:global:${minute}`,`${prefix}:day:${day}`,service==='routes'?6:service==='analytics'?15:service==='report'?60:4,service==='routes'?routeMinute:service==='analytics'?400:service==='report'?300:30,service==='routes'?routeDaily:service==='analytics'?3000:service==='report'?5000:50,units])});
+      body:JSON.stringify(['EVAL',script,3,`${prefix}:ip:${minute}:${identity}`,`${prefix}:global:${minute}`,`${prefix}:day:${day}`,service==='routes'?6:service==='shops'?6:service==='analytics'?15:service==='report'?60:4,service==='routes'?routeMinute:service==='shops'?60:service==='analytics'?400:service==='report'?300:30,service==='routes'?routeDaily:service==='shops'?250:service==='analytics'?3000:service==='report'?5000:50,units])});
     if(!response.ok)return 'unavailable';
     const data=await response.json() as {result?:unknown};return data.result===1?'allowed':data.result===0?'limited':'unavailable';
   } catch {return 'unavailable';} finally {clearTimeout(timer);}
