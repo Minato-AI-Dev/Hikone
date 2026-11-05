@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { nodeById, tagNames } from './data/dbV4';
+import { actions, nodeById, tagNames } from './data/dbV4';
 import { Answers, HistoryState, Recommendation } from './types';
 import { addValidation, completeExperience, historyIsTemporary, loadHistory, startExperience } from './lib/history';
 import { nodeOptions } from './lib/recommend';
@@ -9,8 +9,11 @@ import ResearchExplanation from './ResearchExplanation';
 import { autoRecommend } from './lib/walkingRoutes';
 import { filmLocations } from './data/filmLocations';
 import ShopHoursPanel from './ShopHoursPanel';
+import DestinationCatalog from './DestinationCatalog';
+import HikoneAI from './HikoneAI';
+import { provisionalActions } from './data/provisionalWalking';
 
-type Screen='home'|'questions'|'results'|'detail'|'go'|'done';
+type Screen='home'|'questions'|'results'|'detail'|'go'|'done'|'catalog'|'ai'|'history';
 const defaultAnswers:Answers={currentNodeId:'S01',finalNodeId:'D01',remainingTimeMin:35,interestTagIds:[],availableMode:'徒歩',maxWalkMin:null,detourPreference:'少しなら',discoveryOptIn:true,firstVisit:true,walkingPace:'standard',walkingConditions:'normal'};
 type GPSPosition={lat:number;lng:number;accuracy:number};
 function getGps():Promise<GPSPosition>{
@@ -105,6 +108,42 @@ export default function App(){
     <h1>あと少し、<br/>彦根に寄り道しませんか？</h1>
     <p>今いる場所と残り時間に合わせて、おすすめの寄り道を提案します。</p>
     <button className="primary" onClick={beginQuestions}>寄り道を探す<span>6つの質問に答えるだけ</span></button>
+    <div className="full-journey-choices" aria-label="ほかの探し方">
+     <button className="secondary" onClick={()=>{track('hikone_ai_opened');setScreen('ai')}}>AIに相談する<span>今の希望を文章で伝える（クラウドAIは任意）</span></button>
+     <button className="secondary" onClick={()=>setScreen('catalog')}>場所から探す<span>営業時間が未確認の候補も含めて探す</span></button>
+     <button className="secondary" onClick={()=>setScreen('history')}>旅の記録を見る<span>この端末に残した寄り道の履歴</span></button>
+    </div>
+   </section>}
+
+   {screen==='catalog'&&<DestinationCatalog onBack={reset}/>}
+   {screen==='ai'&&<HikoneAI
+    answers={answers} history={history}
+    onResolved={(nextAnswers,recommendations,intro,_source,routing)=>{
+     setAnswers(nextAnswers);
+     setRecs(recommendations);
+     setRoutingBusy(false);
+     setRoutingSource(routing.source);
+     setRoutingNotice([intro,routing.warning].filter(Boolean).join(' '));
+     if(recommendations.length>0)track('recommendation_viewed',{count:recommendations.length,currentNodeId:nextAnswers.currentNodeId,finalNodeId:nextAnswers.finalNodeId});
+     setScreen('results');
+    }}
+    onBack={reset}
+   />}
+   {screen==='history'&&<section className="history-page">
+    <p className="eyebrow">おかえりなさい</p>
+    <h2>あなたの彦根の記録</h2>
+    <p className="note">訪問の記録はこの端末に保存しています。訪問完了はご自身の申告であり、GPSで確認した結果ではありません。</p>
+    {history?.visitHistory?.length ? <div className="history-list">
+      {[...history.visitHistory].reverse().map((visit,i)=>{
+       const activity=[...actions,...provisionalActions].find(a=>a.id===visit.experienceId);
+       return <article className="history-item" key={visit.experienceId+'-'+visit.startedAt+'-'+i}>
+        <strong>{activity?friendlyAction(activity.type):'寄り道の記録'}</strong>
+        <p className="note">{new Date(visit.startedAt).toLocaleDateString('ja-JP')} ／ {visit.completed?'行ってきた（自己申告）':'未完了'}</p>
+       </article>;
+      })}
+     </div> : <p>まだ記録はありません。寄り道を選んで「行ってきた」を押すと、ここに残ります。</p>}
+    <button className="primary" onClick={beginQuestions}>新しい寄り道を探す</button>
+    <button className="secondary" onClick={reset}>ホームへ戻る</button>
    </section>}
 
    {screen==='questions'&&<Questionnaire step={step} setStep={setStep} answers={answers} setAnswers={setAnswers} gps={gps} gpsBusy={gpsBusy} gpsError={gpsError} requestGps={requestGps} onDone={()=>{track('questionnaire_completed');run(answers)}}/>}
@@ -137,6 +176,7 @@ export default function App(){
     {answers.interestTagIds.some(t=>['T_PHOTO','T_HISTORY'].includes(t))&&<section className="film-recommendations"><h3>映画ロケ地の寄り道候補</h3><p className="note">公開観覧地点への立ち寄り案です。徒歩時間・帰着時刻は計算していません。撮影時のカメラ位置には入れない場合があります。彦根城・玄宮園・博物館は入場条件と開場時間をご確認ください。</p><div className="cards">{filmLocations.filter(p=>p.recommendationEligible&&p.accessibleVerified).slice(0,8).map(p=><article key={p.id} className="result-card"><h3>{p.name}</h3><p>作品：{p.works.join('、')}</p><p>観覧地点：{p.visitorWaypoint}</p><p className="note">{p.accessScope}</p><a className="result-map-link" href={'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent((p.visitorWaypoint||p.name)+' 彦根市')} target="_blank" rel="noopener noreferrer">公開観覧地点を地図で検索 ↗</a><a className="story-source" href={p.source} target="_blank" rel="noopener noreferrer">撮影場所の出典 ↗</a></article>)}</div></section>}
     {answers.interestTagIds.some(t=>['T_SHOP','T_FOOD','T_HIKONYAN'].includes(t))&&<ShopHoursPanel/>}
     <button className="secondary" onClick={beginQuestions}>条件を変える</button>
+    <button className="link" onClick={()=>setScreen('catalog')}>時間を決めずにほかの場所を探す</button>
    </section>}
 
    {screen==='detail'&&selected&&<section>

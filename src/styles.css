@@ -47,3 +47,11 @@ button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #70
 .research-explanation h2{font-family:inherit;font-size:16px;line-height:1.5;margin:22px 0 8px;color:#263b32}
 .research-explanation p{margin:8px 0 14px}
 .research-explanation a{color:#365d4a;text-underline-offset:3px}
+
+
+/* Full-version development branch: optional secondary journeys. */
+.full-journey-choices { display:grid; gap:8px; margin-top:20px; }
+.full-journey-choices .secondary { margin-top:0; min-height:66px; }
+.history-page .history-list { margin-top:20px; }
+.history-page .history-item strong { color:#263b32; }
+.history-page .history-item p { margin:4px 0; }
